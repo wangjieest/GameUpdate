@@ -1,0 +1,137 @@
+// Copyright czm. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Engine/DeveloperSettings.h"
+#include "HotUpdateSettings.generated.h"
+
+/**
+ * 热更新插件设置
+ */
+UCLASS(Config = Game, DefaultConfig, meta = (DisplayName = "Hot Update Settings"))
+class HOTUPDATE_API UHotUpdateSettings : public UDeveloperSettings
+{
+	GENERATED_BODY()
+
+public:
+	UHotUpdateSettings();
+
+	// == 服务器配置 ==
+
+	/// Manifest 文件 URL（包含版本信息和文件列表）
+	UPROPERTY(Config, EditAnywhere, Category = "Server", meta = (DisplayName = "Manifest URL"))
+	FString ManifestUrl;
+
+	/// 资源下载基础 URL
+	UPROPERTY(Config, EditAnywhere, Category = "Server", meta = (DisplayName = "Resource Base URL"))
+	FString ResourceBaseUrl;
+
+	/// 请求超时时间（秒）
+	UPROPERTY(Config, EditAnywhere, Category = "Server", meta = (ClampMin = "1", UIMin = "5", UIMax = "60"))
+	float RequestTimeout;
+
+	// == 下载配置 ==
+
+	/// 最大并发下载数
+	UPROPERTY(Config, EditAnywhere, Category = "Download", meta = (ClampMin = "1", ClampMax = "10", UIMin = "1", UIMax = "6"))
+	int32 MaxConcurrentDownloads;
+
+	/// 单个分片大小（MB）
+	UPROPERTY(Config, EditAnywhere, Category = "Download", meta = (ClampMin = "1", UIMax = "10"))
+	int32 ChunkSizeMB;
+
+	/// 下载重试次数
+	UPROPERTY(Config, EditAnywhere, Category = "Download", meta = (ClampMin = "0", ClampMax = "10"))
+	int32 MaxRetryCount;
+
+	/// 重试间隔（秒）
+	UPROPERTY(Config, EditAnywhere, Category = "Download", meta = (ClampMin = "1"))
+	float RetryInterval;
+
+	/// 是否启用断点续传
+	UPROPERTY(Config, EditAnywhere, Category = "Download")
+	bool bEnableResume;
+
+	/// 下载超时时间（秒）
+	UPROPERTY(Config, EditAnywhere, Category = "Download", meta = (ClampMin = "10"))
+	float DownloadTimeout;
+
+	// == 存储配置 ==
+
+	/// 本地 Pak 存储相对路径
+	UPROPERTY(Config, EditAnywhere, Category = "Storage", meta = (DisplayName = "Local Pak Directory"))
+	FString LocalPakDirectory;
+
+	/// 最大本地版本保留数
+	UPROPERTY(Config, EditAnywhere, Category = "Storage", meta = (ClampMin = "1", ClampMax = "10"))
+	int32 MaxLocalVersionCount;
+
+	/// 是否自动清理旧版本
+	UPROPERTY(Config, EditAnywhere, Category = "Storage")
+	bool bAutoCleanupOldVersions;
+
+	// == 行为配置 ==
+
+	/// 启动时自动检查更新
+	UPROPERTY(Config, EditAnywhere, Category = "Behavior")
+	bool bAutoCheckOnStartup;
+
+	/// 自动下载更新
+	UPROPERTY(Config, EditAnywhere, Category = "Behavior")
+	bool bAutoDownloadUpdates;
+
+	/// Wi-Fi 下自动下载
+	UPROPERTY(Config, EditAnywhere, Category = "Behavior")
+	bool bAutoDownloadOnWifiOnly;
+
+	/// 是否显示更新提示
+	UPROPERTY(Config, EditAnywhere, Category = "Behavior")
+	bool bShowUpdateNotification;
+
+	// == 调试配置 ==
+
+	/// 启用详细日志
+	UPROPERTY(Config, EditAnywhere, Category = "Debug")
+	bool bEnableVerboseLog;
+
+	/// 模拟网络延迟（秒）
+	UPROPERTY(Config, EditAnywhere, Category = "Debug", meta = (ClampMin = "0"))
+	float SimulatedLatency;
+
+	/// 模拟下载失败率（0-1）
+	UPROPERTY(Config, EditAnywhere, Category = "Debug", meta = (ClampMin = "0", ClampMax = "1"))
+	float SimulatedFailureRate;
+
+	/// 获取本地 Pak 存储完整路径
+	FString GetLocalPakFullPath() const;
+
+	/// 获取默认设置
+	static UHotUpdateSettings* Get();
+
+	/// 验证 URL 是否有效且安全
+	static bool ValidateUrl(const FString& Url, FString& OutErrorMessage);
+
+	/// 检查是否允许 HTTP（非 HTTPS）连接
+	static bool IsHttpAllowed();
+
+	// == 最小包模式配置（打包时使用）==
+
+	/// 是否启用最小包模式
+	UPROPERTY(Config, EditAnywhere, Category = "MinimalPackage")
+	bool bEnableMinimalPackage;
+
+	/// 必须包含的目录（这些资源将打包到 Chunk 0）
+	UPROPERTY(Config, EditAnywhere, Category = "MinimalPackage")
+	TArray<FString> WhitelistDirectories;
+
+
+protected:
+	/// 允许的域名白名单（留空表示允许所有）
+	UPROPERTY(Config, EditAnywhere, Category = "Server", meta = (DisplayName = "Allowed Domains"))
+	TArray<FString> AllowedDomains;
+
+	/// 是否允许 HTTP 连接（不推荐，仅用于开发测试）
+	UPROPERTY(Config, EditAnywhere, Category = "Server")
+	bool bAllowHttpConnection;
+};

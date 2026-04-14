@@ -1,0 +1,40 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0.0",
+	"FriendlyName": "Hot Update Plugin",
+	"Description": "Runtime hot update and editor packing tools for Unreal Engine 5. Supports Pak/IoStore packaging, incremental updates, version comparison, and Content Browser integration.",
+	"Category": "Misc",
+	"CreatedBy": "czm",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "HotUpdate",
+			"Type": "Runtime",
+			"LoadingPhase": "PreDefault",
+			"AdditionalDependencies": [
+				"HTTP",
+				"PakFile",
+				"Json",
+				"JsonUtilities"
+			]
+		},
+		{
+			"Name": "HotUpdateEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"UnrealEd",
+				"AssetRegistry",
+				"ContentBrowser"
+			]
+		}
+	]
+}

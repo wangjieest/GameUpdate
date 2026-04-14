@@ -115,73 +115,19 @@ UnrealEditor-Cmd GameUpdate -run=HotUpdate -mode=patch -version=1.0.1 -baseversi
 最小包模式用于构建"瘦身"首包，将 pakchunk1+ 资源分离到热更新目录，仅 pakchunk0 打包到最终安装包。
 
 ```bash
-# RunUAT 打包（推荐，自动化脚本自动处理 Chunk 分离）
-RunUAT BuildCookRun -project=E:/Test/HotPatch/GameUpdate/GameUpdate.uproject \
-    -ScriptsForProject=E:/Test/HotPatch/GameUpdate/GameUpdate.uproject \
-    -platform=Win64 \
-    -cook \
-    -stage \
-    -pak \
-    -MinimalPackage \
-    -HotUpdateOutputDir=E:/Test/HotPatch/GameUpdate/Saved/HotUpdate/Chunks
-
-# UnrealEditor-Cmd 基础包构建（带最小包参数）
+# 基础包构建（带最小包参数）
 UnrealEditor-Cmd GameUpdate -run=HotUpdate -mode=base -version=1.0.0 \
     -platform=Windows \
     -minimal \
     -whitelist="/Game/UI;/Game/Startup"
 ```
 
-**最小包打包参数说明**：
-
-**RunUAT 参数**：
-
-| 参数 | 说明 |
-|------|------|
-| `-ScriptsForProject=<path>` | 项目脚本路径（必需，用于加载项目 Automation 脚本） |
-| `-MinimalPackage` | 启用最小包模式 |
-| `-HotUpdateOutputDir=<path>` | 热更新资源输出目录，pakchunk1+ 文件将移动到此 |
-
-**Commandlet 参数**：
+**最小包参数说明**：
 
 | 参数 | 说明 |
 |------|------|
 | `-minimal` | 启用最小包模式 |
 | `-whitelist=<paths>` | 白名单目录（分号分隔），必须打包到 Chunk 0 |
-
-**自动化脚本说明** (`Build/AutomationScripts/StripExtraPakChunks.Automation.cs`)
-
-该脚本是一个 UE 打包自动化处理器（CustomStagingHandler），在 Staging 阶段完成后自动执行 Chunk 分离：
-
-| 阶段 | 说明 |
-|------|------|
-| 触发时机 | RunUAT BuildCookRun 的 PostStagingFileCopy 阶段 |
-| 启用条件 | 命令行传入 `-MinimalPackage` 参数 |
-| 输出目录 | 由 `-HotUpdateOutputDir=<path>` 参数指定 |
-
-**脚本工作流程**：
-
-```
-Staging 目录
-    ├── pakchunk0.pak     ← 保留（首包基础资源）
-    ├── pakchunk0.bin
-    ├── pakchunk1.pak     ← 移动到 HotUpdateOutputDir
-    ├── pakchunk1.bin     ← 移动到 HotUpdateOutputDir
-    ├── pakchunk2.pak     ← 移动到 HotUpdateOutputDir
-    └── ...
-        ↓
-最终安装包仅包含 pakchunk0
-热更新资源已分离至指定目录，可上传至 CDN
-```
-
-**文件处理范围**：
-
-- `.pak` — Pak 容器文件
-- `.bin` — Pak 紎引文件
-- `.ucas` — IoStore 容器文件
-- `.utoc` — IoStore 目录文件
-
-**典型应用场景**：移动端首包瘦身，pakchunk0 随 APK/IPA 安装，pakchunk1+ 通过 CDN 分发。
 
 ## 分包功能
 

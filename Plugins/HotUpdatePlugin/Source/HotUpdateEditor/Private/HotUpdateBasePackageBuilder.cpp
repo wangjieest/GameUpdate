@@ -1,6 +1,7 @@
 // Copyright czm. All Rights Reserved.
 
 #include "HotUpdateBasePackageBuilder.h"
+#include "HotUpdatePatchPackageBuilder.h"
 #include "Core/HotUpdateFileUtils.h"
 #include "HotUpdateEditor.h"
 #include "HotUpdateEditorSettings.h"
@@ -498,8 +499,7 @@ void UHotUpdateBasePackageBuilder::BuildBasePackageAsync(const FHotUpdateBasePac
 
 	for (const FString& AssetPath : PreCollectedAssetPaths)
 	{
-		FString DiskPath = FPackageName::LongPackageNameToFilename(
-			AssetPath, FPackageName::GetAssetPackageExtension());
+		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath);
 
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
@@ -713,8 +713,7 @@ bool UHotUpdateBasePackageBuilder::CollectAssets(
 
 	for (const FString& AssetPath : AllAssetPaths)
 	{
-		FString DiskPath = FPackageName::LongPackageNameToFilename(
-			AssetPath, FPackageName::GetAssetPackageExtension());
+		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath);
 
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
@@ -794,7 +793,7 @@ bool UHotUpdateBasePackageBuilder::GenerateManifest(
 		if (!DiskPath) continue;
 
 		TSharedPtr<FJsonObject> FileObj = MakeShareable(new FJsonObject);
-		FileObj->SetStringField(TEXT("relativePath"), AssetPath);
+		FileObj->SetStringField(TEXT("filePath"), UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(AssetPath));
 
 		int64 FileSize = IFileManager::Get().FileSize(**DiskPath);
 		FileObj->SetNumberField(TEXT("fileSize"), FileSize);

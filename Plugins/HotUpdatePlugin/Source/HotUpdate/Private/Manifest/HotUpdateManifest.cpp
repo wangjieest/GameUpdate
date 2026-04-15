@@ -10,7 +10,7 @@ void FHotUpdateManifest::BuildPathIndex()
 	// 构建文件路径索引
 	for (int32 i = 0; i < Files.Num(); i++)
 	{
-		PathIndex.Add(Files[i].RelativePath, i);
+		PathIndex.Add(Files[i].FilePath, i);
 	}
 
 	// 构建 Chunk 索引

@@ -503,7 +503,7 @@ bool UHotUpdateDiffTool::ParseManifestFile(
 			if (!FileObj.IsValid()) continue;
 
 			FHotUpdateManifestEntry Entry;
-			Entry.RelativePath = FileObj->GetStringField(TEXT("relativePath"));
+			Entry.FilePath = FileObj->GetStringField(TEXT("filePath"));
 			Entry.FileSize = (int64)FileObj->GetNumberField(TEXT("fileSize"));
 			Entry.FileHash = FileObj->GetStringField(TEXT("fileHash"));
 
@@ -517,7 +517,7 @@ bool UHotUpdateDiffTool::ParseManifestFile(
 				Entry.Source = FileObj->GetStringField(TEXT("source"));
 			}
 
-			OutEntries.Add(Entry.RelativePath, Entry);
+			OutEntries.Add(Entry.FilePath, Entry);
 		}
 
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("ParseManifestFile: Parsed %d entries from 'files' array in '%s'"),
@@ -535,11 +535,11 @@ bool UHotUpdateDiffTool::ParseManifestFile(
 			if (!AssetObj.IsValid()) continue;
 
 			FHotUpdateManifestEntry Entry;
-			Entry.RelativePath = AssetObj->GetStringField(TEXT("path"));
+			Entry.FilePath = AssetObj->GetStringField(TEXT("path"));
 			Entry.FileSize = (int64)AssetObj->GetNumberField(TEXT("size"));
 			Entry.FileHash = AssetObj->GetStringField(TEXT("hash"));
 
-			OutEntries.Add(Entry.RelativePath, Entry);
+			OutEntries.Add(Entry.FilePath, Entry);
 		}
 
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("ParseManifestFile: Parsed %d entries from 'assets' array (legacy format) in '%s'"),

@@ -53,9 +53,9 @@ struct HOTUPDATE_API FHotUpdateManifestEntry
 {
 	GENERATED_BODY()
 
-	/// 文件相对路径
+	/// 文件路径（相对路径，带后缀）
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	FString RelativePath;
+	FString FilePath;
 
 	/// 文件大小
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")

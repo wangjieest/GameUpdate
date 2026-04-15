@@ -72,6 +72,18 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Hot Update|PatchPackage")
 	FOnPatchPackageCompleteDelegate OnComplete;
 
+	/**
+	 * 将资源路径转换为文件名（相对路径，带后缀）
+	 * 如 "/Game/Startup/umg_hotupdate" -> "Game/Startup/umg_hotupdate.uasset"
+	 * 如 "/Game/Maps/MainMenu" -> "Game/Maps/MainMenu.umap"
+	 */
+	static FString ConvertAssetPathToFileName(const FString& AssetPath);
+
+	/**
+	 * 获取资源磁盘路径
+	 */
+	static FString GetAssetDiskPath(const FString& AssetPath);
+
 private:
 	/**
 	 * 收集资源
@@ -180,12 +192,6 @@ private:
 		int32 ProcessedFiles,
 		int32 TotalFiles);
 
-	/**
-	 * 获取资源磁盘路径
-	 */
-	static FString GetAssetDiskPath(const FString& AssetPath);
-
-private:
 	/// 是否正在构建
 	std::atomic<bool> bIsBuilding;
 

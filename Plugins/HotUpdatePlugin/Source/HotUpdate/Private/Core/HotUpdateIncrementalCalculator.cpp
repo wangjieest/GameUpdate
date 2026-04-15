@@ -22,7 +22,7 @@ void UHotUpdateIncrementalCalculator::CalculateIncrementalDownload(
 	TMap<FString, const FHotUpdateManifestEntry*> LocalFileIndex;
 	for (const FHotUpdateManifestEntry& Entry : LocalManifest.Files)
 	{
-		LocalFileIndex.Add(Entry.RelativePath, &Entry);
+		LocalFileIndex.Add(Entry.FilePath, &Entry);
 	}
 
 	// 用于跟踪本地文件是否在服务器 Manifest 中存在
@@ -34,15 +34,15 @@ void UHotUpdateIncrementalCalculator::CalculateIncrementalDownload(
 	// 遍历服务器文件列表，分析文件差异
 	for (const FHotUpdateManifestEntry& ServerEntry : ServerManifest.Files)
 	{
-		ServerFilePaths.Add(ServerEntry.RelativePath);
+		ServerFilePaths.Add(ServerEntry.FilePath);
 
 		FHotUpdateFileInfo FileInfo;
-		FileInfo.FilePath = ServerEntry.RelativePath;
+		FileInfo.FilePath = ServerEntry.FilePath;
 		FileInfo.FileSize = ServerEntry.FileSize;
 		FileInfo.FileHash = ServerEntry.FileHash;
 		FileInfo.DownloadUrl = ServerEntry.CustomDownloadUrl;
 
-		const FHotUpdateManifestEntry* const* LocalEntryPtr = LocalFileIndex.Find(ServerEntry.RelativePath);
+		const FHotUpdateManifestEntry* const* LocalEntryPtr = LocalFileIndex.Find(ServerEntry.FilePath);
 
 		if (LocalEntryPtr == nullptr)
 		{
@@ -59,7 +59,7 @@ void UHotUpdateIncrementalCalculator::CalculateIncrementalDownload(
 			}
 
 			UE_LOG(LogHotUpdate, Verbose, TEXT("Added file: %s (source: %s, chunkId: %d)"),
-				*ServerEntry.RelativePath, *ServerEntry.Source, ServerEntry.ChunkId);
+				*ServerEntry.FilePath, *ServerEntry.Source, ServerEntry.ChunkId);
 		}
 		else
 		{
@@ -69,14 +69,14 @@ void UHotUpdateIncrementalCalculator::CalculateIncrementalDownload(
 			if (LocalEntry->FileHash == ServerEntry.FileHash)
 			{
 				// 文件未变更，检查本地文件是否实际存在
-				if (IsLocalFileValid(StoragePath, ServerEntry.RelativePath, ServerEntry.FileHash, ServerEntry.FileSize, CurrentVersion, LatestVersion))
+				if (IsLocalFileValid(StoragePath, ServerEntry.FilePath, ServerEntry.FileHash, ServerEntry.FileSize, CurrentVersion, LatestVersion))
 				{
 					// 跳过下载
 					FileInfo.ChangeType = EHotUpdateFileChangeType::Unchanged;
 					OutResult.SkippedFileCount++;
 					OutResult.SkippedTotalSize += ServerEntry.FileSize;
 
-					UE_LOG(LogHotUpdate, Verbose, TEXT("Skipped file (unchanged): %s"), *ServerEntry.RelativePath);
+					UE_LOG(LogHotUpdate, Verbose, TEXT("Skipped file (unchanged): %s"), *ServerEntry.FilePath);
 				}
 				else
 				{
@@ -91,7 +91,7 @@ void UHotUpdateIncrementalCalculator::CalculateIncrementalDownload(
 						RequiredPatchChunkIds.Add(ServerEntry.ChunkId);
 					}
 
-					UE_LOG(LogHotUpdate, Verbose, TEXT("Modified file (local missing): %s"), *ServerEntry.RelativePath);
+					UE_LOG(LogHotUpdate, Verbose, TEXT("Modified file (local missing): %s"), *ServerEntry.FilePath);
 				}
 			}
 			else
@@ -108,7 +108,7 @@ void UHotUpdateIncrementalCalculator::CalculateIncrementalDownload(
 				}
 
 				UE_LOG(LogHotUpdate, Verbose, TEXT("Modified file: %s (old hash: %s, new hash: %s)"),
-					*ServerEntry.RelativePath, *LocalEntry->FileHash, *ServerEntry.FileHash);
+					*ServerEntry.FilePath, *LocalEntry->FileHash, *ServerEntry.FileHash);
 			}
 		}
 	}

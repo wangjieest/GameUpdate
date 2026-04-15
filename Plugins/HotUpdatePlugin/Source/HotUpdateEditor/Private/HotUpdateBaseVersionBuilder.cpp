@@ -1,6 +1,7 @@
 // Copyright czm. All Rights Reserved.
 
 #include "HotUpdateBaseVersionBuilder.h"
+#include "HotUpdatePatchPackageBuilder.h"
 #include "Core/HotUpdateFileUtils.h"
 #include "HotUpdateEditor.h"
 #include "HotUpdateVersionManager.h"
@@ -870,8 +871,7 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 	// 获取白名单资源磁盘路径
 	for (const FString& AssetPath : AssetPaths)
 	{
-		FString DiskPath = FPackageName::LongPackageNameToFilename(
-			AssetPath, FPackageName::GetAssetPackageExtension());
+		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath);
 
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
@@ -883,8 +883,7 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 	TMap<FString, FString> PatchDiskPaths;
 	for (const FString& AssetPath : PatchAssets)
 	{
-		FString DiskPath = FPackageName::LongPackageNameToFilename(
-			AssetPath, FPackageName::GetAssetPackageExtension());
+		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath);
 
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
@@ -910,7 +909,7 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 		const FString& DiskPath = Pair.Value;
 
 		TSharedPtr<FJsonObject> FileObj = MakeShareable(new FJsonObject);
-		FileObj->SetStringField(TEXT("relativePath"), AssetPath);
+		FileObj->SetStringField(TEXT("filePath"), UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(AssetPath));
 		FileObj->SetNumberField(TEXT("fileSize"), IFileManager::Get().FileSize(*DiskPath));
 		FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(DiskPath));
 		FileObj->SetNumberField(TEXT("chunkId"), 0);
@@ -928,7 +927,7 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 		const FString& DiskPath = Pair.Value;
 
 		TSharedPtr<FJsonObject> FileObj = MakeShareable(new FJsonObject);
-		FileObj->SetStringField(TEXT("relativePath"), AssetPath);
+		FileObj->SetStringField(TEXT("filePath"), UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(AssetPath));
 		FileObj->SetNumberField(TEXT("fileSize"), IFileManager::Get().FileSize(*DiskPath));
 		FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(DiskPath));
 		FileObj->SetNumberField(TEXT("chunkId"), 11);

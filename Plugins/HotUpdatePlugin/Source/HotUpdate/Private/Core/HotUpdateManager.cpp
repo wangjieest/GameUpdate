@@ -247,7 +247,7 @@ void UHotUpdateManager::HandleVersionCheckResponse(TSharedPtr<IHttpRequest> Requ
 		for (const FHotUpdateManifestEntry& Entry : ServerManifest.Files)
 		{
 			FHotUpdateFileInfo FileInfo;
-			FileInfo.FilePath = Entry.RelativePath;
+			FileInfo.FilePath = Entry.FilePath;
 			FileInfo.FileSize = Entry.FileSize;
 			FileInfo.FileHash = Entry.FileHash;
 			FileInfo.DownloadUrl = Entry.CustomDownloadUrl;

@@ -1339,7 +1339,7 @@ bool UHotUpdatePatchPackageBuilder::GenerateManifest(
 	for (const FString& AssetPath : AllAssetPaths)
 	{
 		TSharedPtr<FJsonObject> FileObj = MakeShareable(new FJsonObject);
-		FileObj->SetStringField(TEXT("relativePath"), AssetPath);
+		FileObj->SetStringField(TEXT("filePath"), ConvertAssetPathToFileName(AssetPath));
 
 		// 检查文件来源（优先级：当前 patch > 之前 patch > 基础版本容器 > base manifest）
 		bool bIsCurrentPatch = ChangedAssetDiskPaths.Contains(AssetPath);
@@ -1460,10 +1460,51 @@ void UHotUpdatePatchPackageBuilder::UpdateProgress(
 	});
 }
 
+FString UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(const FString& AssetPath)
+{
+	FString FileName = AssetPath;
+
+	// 去掉前导斜杠（如 "/Game/Startup/umg_hotupdate" -> "Game/Startup/umg_hotupdate"）
+	if (FileName.StartsWith(TEXT("/")))
+	{
+		FileName.RightChopInline(1);
+	}
+
+	// 使用实际磁盘文件来确定后缀
+	FString DiskPath = GetAssetDiskPath(AssetPath);
+	if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
+	{
+		// 从磁盘路径获取实际扩展名
+		FString Extension = FPaths::GetExtension(DiskPath);
+		if (!Extension.IsEmpty())
+		{
+			FileName += TEXT(".") + Extension;
+			return FileName;
+		}
+	}
+
+	// 如果文件不存在（可能是新资产），使用默认的 .uasset 后缀
+	FileName += TEXT(".uasset");
+	return FileName;
+}
+
 FString UHotUpdatePatchPackageBuilder::GetAssetDiskPath(const FString& AssetPath)
 {
+	// 先尝试普通资产扩展名
 	FString DiskPath = FPackageName::LongPackageNameToFilename(
 		AssetPath, FPackageName::GetAssetPackageExtension());
+
+	// 如果文件不存在，尝试地图扩展名
+	if (!FPaths::FileExists(*DiskPath))
+	{
+		FString MapDiskPath = FPackageName::LongPackageNameToFilename(
+			AssetPath, FPackageName::GetMapPackageExtension());
+		if (FPaths::FileExists(*MapDiskPath))
+		{
+			return MapDiskPath;
+		}
+	}
+
 	return DiskPath;
 }
 

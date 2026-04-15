@@ -82,7 +82,7 @@ public:
 	/**
 	 * 获取资源磁盘路径
 	 */
-	static FString GetAssetDiskPath(const FString& AssetPath);
+		static FString GetAssetDiskPath(const FString& AssetPath, const FString& CookedPlatformDir = TEXT(""));
 
 private:
 	/**

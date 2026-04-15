@@ -227,49 +227,32 @@ void UHotUpdateManager::HandleVersionCheckResponse(TSharedPtr<IHttpRequest> Requ
 	FHotUpdateManifest LocalManifest;
 	bool bHasLocalManifest = VersionStorage && VersionStorage->LoadLocalManifest(LocalManifest);
 
-	if (bHasLocalManifest)
+	if (bHasLocalManifest && IncrementalCalculator)
 	{
-		// 使用增量计算器计算增量下载列表
-		if (IncrementalCalculator)
-		{
-			IncrementalCalculator->CalculateIncrementalDownload(
-				ServerManifest, LocalManifest,
-				UHotUpdateSettings::Get()->GetLocalPakFullPath(),
-				CurrentVersion, LatestVersion,
-				VersionCheckResult);
-		}
+		// 使用增量计算器计算需要下载的 Container（基于 Hash 对比）
+		IncrementalCalculator->CalculateIncrementalDownload(
+			ServerManifest, LocalManifest, VersionCheckResult);
 	}
 	else
 	{
-		// 没有本地 Manifest，下载所有文件
-		UE_LOG(LogHotUpdate, Log, TEXT("No local manifest found, downloading all files"));
+		// 没有本地 Manifest，下载所有 Container
+		UE_LOG(LogHotUpdate, Log, TEXT("No local manifest found, downloading all containers"));
 
-		for (const FHotUpdateManifestEntry& Entry : ServerManifest.Files)
-		{
-			FHotUpdateFileInfo FileInfo;
-			FileInfo.FilePath = Entry.FilePath;
-			FileInfo.FileSize = Entry.FileSize;
-			FileInfo.FileHash = Entry.FileHash;
-			FileInfo.DownloadUrl = Entry.CustomDownloadUrl;
-			FileInfo.ChangeType = EHotUpdateFileChangeType::Added;
-
-			VersionCheckResult.UpdateFiles.Add(FileInfo);
-			VersionCheckResult.TotalUpdateSize += Entry.FileSize;
-		}
-
-		VersionCheckResult.AddedFileCount = ServerManifest.Files.Num();
-		// 添加所有容器到下载列表
 		for (const FHotUpdateContainerInfo& Container : ServerManifest.Containers)
 		{
 			VersionCheckResult.UpdateContainers.Add(Container);
 			VersionCheckResult.IncrementalDownloadSize += Container.UtocSize + Container.UcasSize;
+			UE_LOG(LogHotUpdate, Log, TEXT("Container to download: %s (size: %.2f MB)"),
+				*Container.ContainerName, (Container.UtocSize + Container.UcasSize) / (1024.0 * 1024.0));
 		}
+
+		VersionCheckResult.AddedFileCount = ServerManifest.Containers.Num();
 	}
 
-	UE_LOG(LogHotUpdate, Log, TEXT("Manifest parsed: version %s, %d files total, %d to download (%.2f MB), has update: %s"),
+	UE_LOG(LogHotUpdate, Log, TEXT("Manifest parsed: version %s, %d containers, %d to download (%.2f MB), has update: %s"),
 		*ServerVersion.ToString(),
-		ServerManifest.Files.Num(),
-		VersionCheckResult.UpdateFiles.Num(),
+		ServerManifest.Containers.Num(),
+		VersionCheckResult.UpdateContainers.Num(),
 		VersionCheckResult.IncrementalDownloadSize / (1024.0 * 1024.0),
 		bHasUpdateAvailable ? TEXT("true") : TEXT("false"));
 

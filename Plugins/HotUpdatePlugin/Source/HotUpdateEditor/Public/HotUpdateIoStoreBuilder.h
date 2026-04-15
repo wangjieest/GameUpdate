@@ -160,7 +160,7 @@ private:
 	 * @param AssetPath UE 包路径（如 "/Game/Maps/Start"）
 	 * @return Pak 内部路径（如 "/Game/Maps/Start.umap"）
 	 */
-	FString GetPakInternalPath(const FString& AssetPath);
+	FString GetPakInternalPath(const FString& AssetPath, const FString& DiskPath = TEXT(""));
 
 	/**
 	 * 生成响应文件

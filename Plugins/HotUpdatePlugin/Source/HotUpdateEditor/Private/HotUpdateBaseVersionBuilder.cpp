@@ -871,7 +871,7 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 	// 获取白名单资源磁盘路径
 	for (const FString& AssetPath : AssetPaths)
 	{
-		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath);
+		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath, TEXT(""));
 
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
@@ -883,7 +883,7 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 	TMap<FString, FString> PatchDiskPaths;
 	for (const FString& AssetPath : PatchAssets)
 	{
-		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath);
+		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath, TEXT(""));
 
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{

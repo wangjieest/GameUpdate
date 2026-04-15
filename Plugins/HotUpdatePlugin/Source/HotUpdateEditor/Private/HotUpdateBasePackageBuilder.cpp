@@ -454,6 +454,25 @@ void UHotUpdateBasePackageBuilder::BuildBasePackageAsync(const FHotUpdateBasePac
 		PreCollectedAssetPaths = UniquePaths.Array();
 	}
 
+		// 过滤 UE5 OFPA 外部路径：__ExternalActors__ 和 __ExternalObjects__
+		{
+			int32 ExternalFilteredCount = 0;
+			PreCollectedAssetPaths.RemoveAll([&ExternalFilteredCount](const FString& Path)
+			{
+				if (HotUpdateUtils::IsExternalActorOrObjectPath(Path))
+				{
+					ExternalFilteredCount++;
+					return true;
+				}
+				return false;
+			});
+
+			if (ExternalFilteredCount > 0)
+			{
+				UE_LOG(LogHotUpdateEditor, Log, TEXT("异步构建: 过滤掉 %d 个 UE5 外部 Actor/Object 资源"), ExternalFilteredCount);
+			}
+		}
+
 	// 最小包过滤逻辑
 	TArray<FString> AsyncMinimalWhitelist;
 	TArray<FString> AsyncMinimalEngine;
@@ -499,7 +518,7 @@ void UHotUpdateBasePackageBuilder::BuildBasePackageAsync(const FHotUpdateBasePac
 
 	for (const FString& AssetPath : PreCollectedAssetPaths)
 	{
-		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath);
+		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath, TEXT(""));
 
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
@@ -675,6 +694,27 @@ bool UHotUpdateBasePackageBuilder::CollectAssets(
 		AllAssetPaths = UniquePaths.Array();
 	}
 
+	// 过滤 UE5 OFPA 外部路径：__ExternalActors__ 和 __ExternalObjects__
+	// 这些是 Level 的子对象，烘焙时已合入 .umap 文件，不应作为独立资源打包
+	{
+		int32 ExternalFilteredCount = 0;
+		AllAssetPaths.RemoveAll([&ExternalFilteredCount](const FString& Path)
+		{
+			if (HotUpdateUtils::IsExternalActorOrObjectPath(Path))
+			{
+				ExternalFilteredCount++;
+				UE_LOG(LogHotUpdateEditor, Verbose, TEXT("过滤 UE5 外部 Actor/Object: %s"), *Path);
+				return true;
+			}
+			return false;
+		});
+
+		if (ExternalFilteredCount > 0)
+		{
+			UE_LOG(LogHotUpdateEditor, Log, TEXT("过滤掉 %d 个 UE5 外部 Actor/Object 资源"), ExternalFilteredCount);
+		}
+	}
+
 	// 最小包过滤逻辑
 	if (Config.MinimalPackageConfig.bEnableMinimalPackage)
 	{
@@ -713,7 +753,7 @@ bool UHotUpdateBasePackageBuilder::CollectAssets(
 
 	for (const FString& AssetPath : AllAssetPaths)
 	{
-		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath);
+		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath, TEXT(""));
 
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{

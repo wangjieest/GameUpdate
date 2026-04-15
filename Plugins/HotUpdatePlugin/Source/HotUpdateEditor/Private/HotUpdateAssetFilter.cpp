@@ -1,6 +1,7 @@
 // Copyright czm. All Rights Reserved.
 
 #include "HotUpdateAssetFilter.h"
+#include "HotUpdateUtils.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/AssetData.h"
 
@@ -300,6 +301,12 @@ void FHotUpdateAssetFilter::GetDependenciesRecursive(
 
 			// 只处理 /Game/ 和 /Engine/ 下的资产
 			if (!DepStr.StartsWith(TEXT("/Game/")) && !DepStr.StartsWith(TEXT("/Engine/")))
+			{
+				continue;
+			}
+
+			// 过滤 UE5 OFPA 外部路径，这些是 Level 子对象，已合入烘焙后的 .umap
+			if (HotUpdateUtils::IsExternalActorOrObjectPath(DepStr))
 			{
 				continue;
 			}

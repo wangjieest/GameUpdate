@@ -13,179 +13,113 @@ UHotUpdateIncrementalCalculator::UHotUpdateIncrementalCalculator()
 void UHotUpdateIncrementalCalculator::CalculateIncrementalDownload(
 	const FHotUpdateManifest& ServerManifest,
 	const FHotUpdateManifest& LocalManifest,
-	const FString& StoragePath,
-	const FHotUpdateVersionInfo& CurrentVersion,
-	const FHotUpdateVersionInfo& LatestVersion,
 	FHotUpdateVersionCheckResult& OutResult)
 {
-	// 构建本地文件索引（路径 -> 文件条目）
-	TMap<FString, const FHotUpdateManifestEntry*> LocalFileIndex;
-	for (const FHotUpdateManifestEntry& Entry : LocalManifest.Files)
+	// 构建本地 Container 索引（ChunkId -> Container）
+	TMap<int32, const FHotUpdateContainerInfo*> LocalContainerIndex;
+	for (const FHotUpdateContainerInfo& Container : LocalManifest.Containers)
 	{
-		LocalFileIndex.Add(Entry.FilePath, &Entry);
+		LocalContainerIndex.Add(Container.ChunkId, &Container);
 	}
 
-	// 用于跟踪本地文件是否在服务器 Manifest 中存在
-	TSet<FString> ServerFilePaths;
-
-	// 收集需要下载的 Patch Chunk ID
-	TSet<int32> RequiredPatchChunkIds;
-
-	// 遍历服务器文件列表，分析文件差异
-	for (const FHotUpdateManifestEntry& ServerEntry : ServerManifest.Files)
+	// 遍历服务端 Containers，分析差异
+	for (const FHotUpdateContainerInfo& ServerContainer : ServerManifest.Containers)
 	{
-		ServerFilePaths.Add(ServerEntry.FilePath);
+		const FHotUpdateContainerInfo* const* LocalContainerPtr = LocalContainerIndex.Find(ServerContainer.ChunkId);
 
-		FHotUpdateFileInfo FileInfo;
-		FileInfo.FilePath = ServerEntry.FilePath;
-		FileInfo.FileSize = ServerEntry.FileSize;
-		FileInfo.FileHash = ServerEntry.FileHash;
-		FileInfo.DownloadUrl = ServerEntry.CustomDownloadUrl;
+		bool bNeedDownload = false;
+		FString Reason;
 
-		const FHotUpdateManifestEntry* const* LocalEntryPtr = LocalFileIndex.Find(ServerEntry.FilePath);
-
-		if (LocalEntryPtr == nullptr)
+		if (LocalContainerPtr == nullptr)
 		{
-			// 新增文件
-			FileInfo.ChangeType = EHotUpdateFileChangeType::Added;
-			OutResult.UpdateFiles.Add(FileInfo);
-			OutResult.TotalUpdateSize += ServerEntry.FileSize;
-			OutResult.AddedFileCount++;
-
-			// 如果是 patch 文件，记录 Chunk ID
-			if (ServerEntry.Source == TEXT("patch") && ServerEntry.ChunkId >= 0)
-			{
-				RequiredPatchChunkIds.Add(ServerEntry.ChunkId);
-			}
-
-			UE_LOG(LogHotUpdate, Verbose, TEXT("Added file: %s (source: %s, chunkId: %d)"),
-				*ServerEntry.FilePath, *ServerEntry.Source, ServerEntry.ChunkId);
+			// 新增 Container
+			bNeedDownload = true;
+			Reason = TEXT("new container");
+			OutResult.AddedFileCount++; // 使用 AddedFileCount 表示新增的 Container 数量
 		}
 		else
 		{
-			const FHotUpdateManifestEntry* LocalEntry = *LocalEntryPtr;
+			const FHotUpdateContainerInfo* LocalContainer = *LocalContainerPtr;
 
-			// 检查文件是否变更（通过 Hash 对比）
-			if (LocalEntry->FileHash == ServerEntry.FileHash)
+			// 对比 Hash 判断是否需要更新
+			if (LocalContainer->UcasHash != ServerContainer.UcasHash)
 			{
-				// 文件未变更，检查本地文件是否实际存在
-				if (IsLocalFileValid(StoragePath, ServerEntry.FilePath, ServerEntry.FileHash, ServerEntry.FileSize, CurrentVersion, LatestVersion))
-				{
-					// 跳过下载
-					FileInfo.ChangeType = EHotUpdateFileChangeType::Unchanged;
-					OutResult.SkippedFileCount++;
-					OutResult.SkippedTotalSize += ServerEntry.FileSize;
-
-					UE_LOG(LogHotUpdate, Verbose, TEXT("Skipped file (unchanged): %s"), *ServerEntry.FilePath);
-				}
-				else
-				{
-					// Hash 相同但本地文件丢失或损坏，需要重新下载
-					FileInfo.ChangeType = EHotUpdateFileChangeType::Modified;
-					OutResult.UpdateFiles.Add(FileInfo);
-					OutResult.TotalUpdateSize += ServerEntry.FileSize;
-					OutResult.ModifiedFileCount++;
-
-					if (ServerEntry.Source == TEXT("patch") && ServerEntry.ChunkId >= 0)
-					{
-						RequiredPatchChunkIds.Add(ServerEntry.ChunkId);
-					}
-
-					UE_LOG(LogHotUpdate, Verbose, TEXT("Modified file (local missing): %s"), *ServerEntry.FilePath);
-				}
+				bNeedDownload = true;
+				Reason = TEXT("ucas hash changed");
+				OutResult.ModifiedFileCount++; // 使用 ModifiedFileCount 表示修改的 Container 数量
 			}
-			else
+			else if (LocalContainer->UtocHash != ServerContainer.UtocHash)
 			{
-				// 文件已修改
-				FileInfo.ChangeType = EHotUpdateFileChangeType::Modified;
-				OutResult.UpdateFiles.Add(FileInfo);
-				OutResult.TotalUpdateSize += ServerEntry.FileSize;
+				bNeedDownload = true;
+				Reason = TEXT("utoc hash changed");
 				OutResult.ModifiedFileCount++;
-
-				if (ServerEntry.Source == TEXT("patch") && ServerEntry.ChunkId >= 0)
-				{
-					RequiredPatchChunkIds.Add(ServerEntry.ChunkId);
-				}
-
-				UE_LOG(LogHotUpdate, Verbose, TEXT("Modified file: %s (old hash: %s, new hash: %s)"),
-					*ServerEntry.FilePath, *LocalEntry->FileHash, *ServerEntry.FileHash);
 			}
 		}
-	}
 
-	// 检测已删除的文件（存在于本地但不在服务器 Manifest 中）
-	for (const auto& Pair : LocalFileIndex)
-	{
-		if (!ServerFilePaths.Contains(Pair.Key))
+		if (bNeedDownload)
 		{
-			OutResult.DeletedFileCount++;
-			UE_LOG(LogHotUpdate, Verbose, TEXT("Deleted file: %s"), *Pair.Key);
+			OutResult.UpdateContainers.Add(ServerContainer);
+			OutResult.IncrementalDownloadSize += ServerContainer.UtocSize + ServerContainer.UcasSize;
+
+			UE_LOG(LogHotUpdate, Log, TEXT("Need download container: %s (chunkId: %d, reason: %s, size: %.2f MB)"),
+				*ServerContainer.ContainerName, ServerContainer.ChunkId, *Reason,
+				(ServerContainer.UtocSize + ServerContainer.UcasSize) / (1024.0 * 1024.0));
+		}
+		else
+		{
+			OutResult.SkippedFileCount++; // 使用 SkippedFileCount 表示跳过的 Container 数量
+			OutResult.SkippedTotalSize += ServerContainer.UtocSize + ServerContainer.UcasSize;
+			UE_LOG(LogHotUpdate, Verbose, TEXT("Skipped container: %s (chunkId: %d, unchanged)"),
+				*ServerContainer.ContainerName, ServerContainer.ChunkId);
 		}
 	}
 
-	// 根据需要的 Chunk ID，收集需要下载的容器
-	for (const FHotUpdateContainerInfo& Container : ServerManifest.Containers)
+	// 检测已删除的 Container（存在于本地但不在服务端）
+	for (const FHotUpdateContainerInfo& LocalContainer : LocalManifest.Containers)
 	{
-		if (RequiredPatchChunkIds.Contains(Container.ChunkId))
+		bool bFound = false;
+		for (const FHotUpdateContainerInfo& ServerContainer : ServerManifest.Containers)
 		{
-			OutResult.UpdateContainers.Add(Container);
-			OutResult.IncrementalDownloadSize += Container.UtocSize + Container.UcasSize;
-			UE_LOG(LogHotUpdate, Log, TEXT("Required container: %s (chunkId: %d, size: %lld)"),
-				*Container.ContainerName, Container.ChunkId, Container.UtocSize + Container.UcasSize);
+			if (ServerContainer.ChunkId == LocalContainer.ChunkId)
+			{
+				bFound = true;
+				break;
+			}
+		}
+
+		if (!bFound)
+		{
+			OutResult.DeletedFileCount++; // 使用 DeletedFileCount 表示删除的 Container 数量
+			UE_LOG(LogHotUpdate, Verbose, TEXT("Deleted container: %s (chunkId: %d)"),
+				*LocalContainer.ContainerName, LocalContainer.ChunkId);
 		}
 	}
 
 	UE_LOG(LogHotUpdate, Log, TEXT("Incremental analysis complete: %d added, %d modified, %d deleted, %d skipped"),
 		OutResult.AddedFileCount, OutResult.ModifiedFileCount, OutResult.DeletedFileCount, OutResult.SkippedFileCount);
 
-	UE_LOG(LogHotUpdate, Log, TEXT("Required containers: %d, total download size: %lld bytes"),
-		OutResult.UpdateContainers.Num(), OutResult.IncrementalDownloadSize);
+	UE_LOG(LogHotUpdate, Log, TEXT("Required containers: %d, total download size: %.2f MB"),
+		OutResult.UpdateContainers.Num(), OutResult.IncrementalDownloadSize / (1024.0 * 1024.0));
 }
 
-bool UHotUpdateIncrementalCalculator::IsLocalFileValid(
+bool UHotUpdateIncrementalCalculator::IsLocalContainerValid(
 	const FString& StoragePath,
-	const FString& RelativePath,
-	const FString& ExpectedHash,
-	int64 ExpectedSize,
-	const FHotUpdateVersionInfo& CurrentVersion,
-	const FHotUpdateVersionInfo& LatestVersion) const
+	const FHotUpdateContainerInfo& Container) const
 {
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 
-	// 检查当前版本目录
-	FString LocalFilePath = StoragePath / CurrentVersion.ToString() / RelativePath;
-
-	if (!PlatformFile.FileExists(*LocalFilePath))
+	// 检查 utoc 文件是否存在
+	FString UtocPath = StoragePath / Container.UtocPath;
+	if (!PlatformFile.FileExists(*UtocPath))
 	{
-		// 也检查新版本目录
-		LocalFilePath = StoragePath / LatestVersion.ToString() / RelativePath;
-		if (!PlatformFile.FileExists(*LocalFilePath))
-		{
-			return false;
-		}
+		return false;
 	}
 
-	// 检查文件大小
-	if (ExpectedSize > 0)
+	// 检查 ucas 文件是否存在
+	FString UcasPath = StoragePath / Container.UcasPath;
+	if (!PlatformFile.FileExists(*UcasPath))
 	{
-		int64 ActualSize = IFileManager::Get().FileSize(*LocalFilePath);
-		if (ActualSize != ExpectedSize)
-		{
-			UE_LOG(LogHotUpdate, Verbose, TEXT("File size mismatch: %s (expected: %lld, actual: %lld)"),
-				*RelativePath, ExpectedSize, ActualSize);
-			return false;
-		}
-	}
-
-	// 如果需要 Hash 验证
-	if (!ExpectedHash.IsEmpty())
-	{
-		FString ActualHash = UHotUpdateFileUtils::CalculateFileHash(LocalFilePath);
-		if (ActualHash != ExpectedHash)
-		{
-			UE_LOG(LogHotUpdate, Verbose, TEXT("File hash mismatch: %s"), *RelativePath);
-			return false;
-		}
+		return false;
 	}
 
 	return true;

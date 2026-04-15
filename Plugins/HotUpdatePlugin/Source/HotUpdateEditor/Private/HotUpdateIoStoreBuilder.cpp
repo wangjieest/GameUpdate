@@ -196,8 +196,8 @@ bool UHotUpdateIoStoreBuilder::CreateIoStoreWithUnrealPak(
 		return false;
 	}
 
-	// 8. 清理临时目录
-	CleanupTempDirectory(TempDir);
+	// 8. 不清理临时目录，保留响应文件等供调试查看
+	// 下次构建时 PrepareTempDirectory 会先删除重建
 
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("容器创建完成，总大小: %lld 字节"), OutResult.ContainerSize);
 	UpdateProgress(TEXT("完成"), TEXT(""), 1, 1, TotalSize, TotalSize);
@@ -242,11 +242,13 @@ bool UHotUpdateIoStoreBuilder::PrepareTempDirectory(
 	return true;
 }
 
-FString UHotUpdateIoStoreBuilder::GetPakInternalPath(const FString& AssetPath)
+FString UHotUpdateIoStoreBuilder::GetPakInternalPath(const FString& AssetPath, const FString& DiskPath)
 {
-	// 从 AssetPath（如 "/Game/Maps/Start"）转换为 Pak 内部路径
-	// Pak 内部路径直接使用 UE 长包名格式加上扩展名
-	// 如 "/Game/Maps/Start" -> "/Game/Maps/Start.umap"
+	// 从 AssetPath（如 "/Game/Maps/Start"）转换为 Pak 内部路径（Dest 路径）
+	// UE5 标准 pak 的 Dest 路径格式: ../../../{ProjectName}/Content/...
+	// 例如 "/Game/Maps/Start" -> "../../../GameUpdate/Content/Maps/Start.umap"
+	// 这样 GetCommonRootPath 会计算出 mount point 为 "../../../"
+	// 与标准基础 pak 的 mount point 一致，运行时才能正确匹配文件路径
 
 	FString PakPath = AssetPath;
 
@@ -257,23 +259,54 @@ FString UHotUpdateIoStoreBuilder::GetPakInternalPath(const FString& AssetPath)
 	}
 
 	// 根据资源类型添加正确的扩展名
-	// uasset 是普通资源，umap 是地图
-	if (PakPath.EndsWith(TEXT(".uasset")) || PakPath.EndsWith(TEXT(".umap")))
+	// uasset 是普通资源，umap 是地图，uexp/ubulk 是配套文件
+	if (PakPath.EndsWith(TEXT(".uasset")) || PakPath.EndsWith(TEXT(".umap")) ||
+		PakPath.EndsWith(TEXT(".uexp")) || PakPath.EndsWith(TEXT(".ubulk")) ||
+		PakPath.EndsWith(TEXT(".ubulk2")))
 	{
 		// 已经有扩展名，直接使用
 	}
 	else
 	{
-		// 尝试判断是地图还是普通资源
-		// 地图通常包含在 Maps 目录下
-		if (PakPath.Contains(TEXT("/Maps/")) || PakPath.Contains(TEXT("Map")))
+		// 优先从磁盘路径获取实际扩展名
+		if (!DiskPath.IsEmpty())
 		{
-			PakPath += TEXT(".umap");
+			FString Extension = FPaths::GetExtension(DiskPath);
+			if (!Extension.IsEmpty())
+			{
+				PakPath += TEXT(".") + Extension;
+			}
+			else
+			{
+				PakPath += TEXT(".uasset");
+			}
 		}
 		else
 		{
-			PakPath += TEXT(".uasset");
+			// 回退：地图用 .umap，其他用 .uasset
+			if (PakPath.Contains(TEXT("/Maps/")) || PakPath.Contains(TEXT("/Map/")))
+			{
+				PakPath += TEXT(".umap");
+			}
+			else
+			{
+				PakPath += TEXT(".uasset");
+			}
 		}
+	}
+
+	// 将虚拟路径 /Game/... 转换为标准 pak Dest 格式 ../../../{ProjectName}/Content/...
+	// /Game/ 映射到项目的 Content 目录
+	// 标准 UE5 pak 格式: mount point "../../../" + "GameUpdate/Content/TopDown/..."
+	// 这样运行时引擎能正确匹配绝对路径
+	FString ProjectName = FApp::GetProjectName();
+	if (PakPath.StartsWith(TEXT("/Game/")))
+	{
+		PakPath = FString::Printf(TEXT("../../../%s/Content/%s"), *ProjectName, *PakPath.Mid(6));
+	}
+	else if (PakPath.StartsWith(TEXT("/Engine/")))
+	{
+		PakPath = FString::Printf(TEXT("../../../Engine/Content/%s"), *PakPath.Mid(9));
 	}
 
 	// 确保使用正斜杠
@@ -318,8 +351,8 @@ bool UHotUpdateIoStoreBuilder::GenerateResponseFile(
 			continue;
 		}
 
-		// 使用 AssetPath 计算 Pak 内部路径
-		FString PakInternalPath = GetPakInternalPath(AssetPath);
+		// 使用 AssetPath 和 DiskPath 计算 Pak 内部路径
+		FString PakInternalPath = GetPakInternalPath(AssetPath, DiskPath);
 
 		// 源路径使用正斜杠
 		FString UnixDiskPath = DiskPath;
@@ -330,6 +363,34 @@ bool UHotUpdateIoStoreBuilder::GenerateResponseFile(
 		int64 FileSize = IFileManager::Get().FileSize(*DiskPath);
 		OutTotalSize += FileSize;
 		OutValidFileCount++;
+
+		// 收集配套文件 (.uexp, .ubulk, .ubulk2)
+		// UE5 的 uasset/umap 通常有对应的 .uexp（导出数据）和 .ubulk（批量数据）
+		// 基础包中这些文件同时存在，Patch 也必须包含，否则运行时读取越界崩溃
+		FString DiskDir = FPaths::GetPath(DiskPath);
+		FString BaseFilename = FPaths::GetBaseFilename(DiskPath);
+		FString PakInternalDir = FPaths::GetPath(PakInternalPath);
+		FString PakInternalBaseFilename = FPaths::GetBaseFilename(PakInternalPath);
+
+		static const TArray<FString> CompanionExtensions = { TEXT("uexp"), TEXT("ubulk"), TEXT("ubulk2") };
+		for (const FString& CompanionExt : CompanionExtensions)
+		{
+			FString CompanionDiskPath = FPaths::Combine(DiskDir, BaseFilename + TEXT(".") + CompanionExt);
+			if (PlatformFile.FileExists(*CompanionDiskPath))
+			{
+				FString CompanionPakPath = PakInternalDir / (PakInternalBaseFilename + TEXT(".") + CompanionExt);
+				CompanionPakPath.ReplaceCharInline('\\', '/');
+
+				FString UnixCompanionDiskPath = CompanionDiskPath;
+				UnixCompanionDiskPath.ReplaceCharInline('\\', '/');
+
+				ResponseContent += FString::Printf(TEXT("\"%s\" \"%s\"\n"), *UnixCompanionDiskPath, *CompanionPakPath);
+
+				int64 CompanionSize = IFileManager::Get().FileSize(*CompanionDiskPath);
+				OutTotalSize += CompanionSize;
+				OutValidFileCount++;
+			}
+		}
 
 		UpdateProgress(TEXT("准备资源"), DiskPath, ++Index, TotalAssets, 0, OutTotalSize);
 	}
@@ -342,6 +403,24 @@ bool UHotUpdateIoStoreBuilder::GenerateResponseFile(
 	}
 
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("已准备 %d 个资源文件，总大小: %lld 字节"), OutValidFileCount, OutTotalSize);
+
+	// 添加占位条目确保 PAK mount point 为 ../../../
+	// GetCommonRootPath 从所有 Dest 路径计算最长公共前缀作为 mount point
+	// 如果所有资源都在同一个子目录下，会导致 mount point 过窄
+	// 与基础包 ../../../ 不匹配，运行时无法覆盖基础包内容
+	// 使用 Engine/Content 前缀与 GameUpdate/Content 前缀不同，强制公共前缀缩短到 ../../../
+	{
+		FString ProjectName = FApp::GetProjectName();
+		FString PlaceholderSource = FPaths::ProjectDir() / (ProjectName + TEXT(".uproject"));
+		if (FPaths::FileExists(*PlaceholderSource))
+		{
+			FString PlaceholderSourceUnix = PlaceholderSource;
+			PlaceholderSourceUnix.ReplaceCharInline('\\', '/');
+			FString PlaceholderDest = FString::Printf(TEXT("../../../Engine/Content/__MountPointPlaceholder__/%s.uproject"), *ProjectName);
+			ResponseContent += FString::Printf(TEXT("\"%s\" \"%s\"\n"), *PlaceholderSourceUnix, *PlaceholderDest);
+			UE_LOG(LogHotUpdateEditor, Verbose, TEXT("添加 mount point 占位条目: %s -> %s"), *PlaceholderSourceUnix, *PlaceholderDest);
+		}
+	}
 
 	if (!FFileHelper::SaveStringToFile(ResponseContent, *ResponseFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
 	{
@@ -416,9 +495,10 @@ FString UHotUpdateIoStoreBuilder::BuildUnrealPakCommandLine(
 			*ProjectDir);
 	}
 
-	// 添加 MountPoint 参数，指定 Pak 文件的挂载点
-	// 热更新 Pak 文件使用 /Game/ 作为挂载点，这样运行时可以正确加载
-	CmdLine += TEXT(" -mountpoint=\"/Game/\"");
+	// MountPoint 由 GetCommonRootPath 从响应文件 Dest 路径自动计算
+	// UE5 的 UnrealPak 在 -Create 模式下不支持 -mountpoint 参数覆盖
+	// 需要在响应文件中添加占位条目确保公共前缀为 ../../../
+	// 否则当所有资源在同一子目录时 mount point 过窄，运行时无法覆盖基础包
 
 	if (Config.CompressionFormat != TEXT("None"))
 	{

@@ -12,7 +12,11 @@
 
 /**
  * 增量下载计算器
- * 负责对比服务器和本地 Manifest，计算需要下载的文件和容器
+ * 负责对比服务器和本地 Manifest，计算需要下载的 Container
+ *
+ * 注意：运行时热更新是基于 Container（.utoc/.ucas）级别的，
+ * 服务端 manifest.json 只包含 version 和 chunks 信息，
+ * 不包含 files 列表（files 在 filemanifest.json 中，仅供编辑器端差异计算使用）
  */
 UCLASS(BlueprintType)
 class HOTUPDATE_API UHotUpdateIncrementalCalculator : public UObject
@@ -23,45 +27,23 @@ public:
 	UHotUpdateIncrementalCalculator();
 
 	/**
-	 * 计算增量下载列表
+	 * 计算增量下载列表（Container 级对比）
 	 * @param ServerManifest 服务器 Manifest
 	 * @param LocalManifest 本地 Manifest
-	 * @param StoragePath 本地存储路径
-	 * @param CurrentVersion 当前版本
-	 * @param LatestVersion 最新版本
 	 * @param OutResult 输出结果
 	 */
 	void CalculateIncrementalDownload(
 		const FHotUpdateManifest& ServerManifest,
 		const FHotUpdateManifest& LocalManifest,
-		const FString& StoragePath,
-		const FHotUpdateVersionInfo& CurrentVersion,
-		const FHotUpdateVersionInfo& LatestVersion,
 		FHotUpdateVersionCheckResult& OutResult);
 
 	/**
-	 * 检查本地文件是否存在且 Hash 匹配
+	 * 检查本地 Container 文件是否存在
 	 * @param StoragePath 存储路径
-	 * @param RelativePath 文件相对路径
-	 * @param ExpectedHash 期望的 Hash
-	 * @param ExpectedSize 期望的大小
-	 * @param CurrentVersion 当前版本
-	 * @param LatestVersion 最新版本
-	 * @return 文件是否有效
+	 * @param Container Container 信息
+	 * @return Container 文件是否存在
 	 */
-	bool IsLocalFileValid(
+	bool IsLocalContainerValid(
 		const FString& StoragePath,
-		const FString& RelativePath,
-		const FString& ExpectedHash,
-		int64 ExpectedSize,
-		const FHotUpdateVersionInfo& CurrentVersion,
-		const FHotUpdateVersionInfo& LatestVersion) const;
-
-private:
-	/**
-	 * 计算单个文件的 Hash
-	 * @param FilePath 文件路径
-	 * @return SHA1 Hash 字符串
-	 */
-	static FString CalculateFileHash(const FString& FilePath);
+		const FHotUpdateContainerInfo& Container) const;
 };

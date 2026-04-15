@@ -99,11 +99,14 @@ struct HOTUPDATE_API FHotUpdateManifest
 	/// 计算总大小
 	void BuildPathIndex();
 
-	/// 按路径查找文件（使用索引快速查找）
-	const FHotUpdateManifestEntry* FindFile(const FString& RelativePath) const;
+	/// 按路径查找文件（使用索引快速查找，编辑器端使用）
+	const FHotUpdateManifestEntry* FindFile(const FString& FilePath) const;
 
 	/// 获取 Chunk 信息
 	const FHotUpdateChunkInfo* FindChunk(int32 ChunkId) const;
+
+	/// 按 ChunkId 查找 Container（运行时热更新使用）
+	const FHotUpdateContainerInfo* FindContainer(int32 ChunkId) const;
 
 	FHotUpdateManifest()
 		: ManifestVersion(2)
@@ -119,11 +122,14 @@ struct HOTUPDATE_API FHotUpdateManifest
 	}
 
 private:
-	/// 路径到索引的映射（用于快速查找）
+	/// 路径到索引的映射（用于快速查找文件，编辑器端使用）
 	mutable TMap<FString, int32> PathIndex;
 
-	/// Chunk ID 到索引的映射（用于快速查找）
+	/// Chunk ID 到索引的映射（用于快速查找 Chunk）
 	mutable TMap<int32, int32> ChunkIndex;
+
+	/// Chunk ID 到 Container 索引的映射（运行时热更新使用）
+	mutable TMap<int32, int32> ContainerIndex;
 
 	/// 索引是否已构建
 	mutable bool bPathIndexBuilt;

@@ -10,6 +10,7 @@
 #include "HAL/PlatformFileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Misc/App.h"
 #include "Misc/SecureHash.h"
 #include "JsonObjectConverter.h"
 
@@ -155,10 +156,12 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	// 用于打包的资源列表（只包含变更资源）
 	TMap<FString, FString> ChangedAssetDiskPaths;
 
+	// Cooked 平台目录，用于解析运行时需要的 cooked 格式文件路径
+		FString CookedPlatformDir = FPaths::ProjectSavedDir() / TEXT("Cooked") / HotUpdateUtils::GetPlatformString(Config.Platform);
 	// 添加新增资源的磁盘路径
 	for (const FHotUpdateAssetDiff& AddedDiff : DiffReport.AddedAssets)
 	{
-		FString DiskPath = GetAssetDiskPath(AddedDiff.AssetPath);
+		FString DiskPath = GetAssetDiskPath(AddedDiff.AssetPath, CookedPlatformDir);
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
 			ChangedAssetDiskPaths.Add(AddedDiff.AssetPath, DiskPath);
@@ -168,7 +171,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	// 添加修改资源的磁盘路径
 	for (const FHotUpdateAssetDiff& ModifiedDiff : DiffReport.ModifiedAssets)
 	{
-		FString DiskPath = GetAssetDiskPath(ModifiedDiff.AssetPath);
+		FString DiskPath = GetAssetDiskPath(ModifiedDiff.AssetPath, CookedPlatformDir);
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
 			ChangedAssetDiskPaths.Add(ModifiedDiff.AssetPath, DiskPath);
@@ -917,6 +920,8 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(
 				for (const FName& Dep : Dependencies)
 				{
 					FString DepStr = Dep.ToString();
+					// 只收集项目资源依赖（/Game/ 开头）
+					// 不包含引擎资源（/Engine/）和插件资源（如 /NNE/）
 					if (DepStr.StartsWith(TEXT("/Game/")))
 					{
 						UniquePaths.Add(DepStr);
@@ -928,14 +933,58 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(
 		AllAssetPaths = UniquePaths.Array();
 	}
 
+	// 过滤非项目资源：只保留 /Game/ 开头的资源
+	// Patch 包不应该包含引擎或插件资源，这些资源在基础包中已存在
+	int32 FilteredCount = 0;
+	AllAssetPaths.RemoveAll([&FilteredCount](const FString& Path)
+	{
+		if (!Path.StartsWith(TEXT("/Game/")))
+		{
+			FilteredCount++;
+			UE_LOG(LogHotUpdateEditor, Verbose, TEXT("过滤非项目资源: %s"), *Path);
+			return true;
+		}
+		return false;
+	});
+
+	if (FilteredCount > 0)
+	{
+		UE_LOG(LogHotUpdateEditor, Log, TEXT("过滤掉 %d 个非项目资源（引擎/插件资源）"), FilteredCount);
+	}
+
+	// 过滤 UE5 OFPA 外部路径：__ExternalActors__ 和 __ExternalObjects__
+	// 这些是 Level 的子对象，烘焙时已合入 .umap 文件，不应作为独立资源打包
+	int32 ExternalFilteredCount = 0;
+	AllAssetPaths.RemoveAll([&ExternalFilteredCount](const FString& Path)
+	{
+		if (HotUpdateUtils::IsExternalActorOrObjectPath(Path))
+		{
+			ExternalFilteredCount++;
+			UE_LOG(LogHotUpdateEditor, Verbose, TEXT("过滤 UE5 外部 Actor/Object: %s"), *Path);
+			return true;
+		}
+		return false;
+	});
+
+	if (ExternalFilteredCount > 0)
+	{
+		UE_LOG(LogHotUpdateEditor, Log, TEXT("过滤掉 %d 个 UE5 外部 Actor/Object 资源"), ExternalFilteredCount);
+	}
+
 	// 获取磁盘路径
+	// 使用 Cooked 目录解析磁盘路径（运行时需要 cooked 格式的 .uasset + .uexp）
+	FString CookedPlatformDir = FPaths::ProjectSavedDir() / TEXT("Cooked") / HotUpdateUtils::GetPlatformString(Config.Platform);
 	for (const FString& AssetPath : AllAssetPaths)
 	{
-		FString DiskPath = GetAssetDiskPath(AssetPath);
+		FString DiskPath = GetAssetDiskPath(AssetPath, CookedPlatformDir);
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
 			OutAssetPaths.Add(AssetPath);
 			OutAssetDiskPaths.Add(AssetPath, DiskPath);
+		}
+		else
+		{
+			UE_LOG(LogHotUpdateEditor, Verbose, TEXT("跳过无 cooked 文件的资源: %s"), *AssetPath);
 		}
 	}
 
@@ -1005,7 +1054,7 @@ bool UHotUpdatePatchPackageBuilder::LoadBaseManifest(
 			TSharedPtr<FJsonObject> FileObj = FileValue->AsObject();
 			if (!FileObj.IsValid()) continue;
 
-			FString Path = FileObj->GetStringField(TEXT("relativePath"));
+			FString Path = FileObj->GetStringField(TEXT("filePath"));
 			FString Hash = FileObj->GetStringField(TEXT("fileHash"));
 			int64 Size = (int64)FileObj->GetNumberField(TEXT("fileSize"));
 
@@ -1471,7 +1520,7 @@ FString UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(const FString&
 	}
 
 	// 使用实际磁盘文件来确定后缀
-	FString DiskPath = GetAssetDiskPath(AssetPath);
+	FString DiskPath = GetAssetDiskPath(AssetPath, TEXT(""));
 	if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 	{
 		// 从磁盘路径获取实际扩展名
@@ -1488,13 +1537,52 @@ FString UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(const FString&
 	return FileName;
 }
 
-FString UHotUpdatePatchPackageBuilder::GetAssetDiskPath(const FString& AssetPath)
+FString UHotUpdatePatchPackageBuilder::GetAssetDiskPath(const FString& AssetPath, const FString& CookedPlatformDir)
 {
-	// 先尝试普通资产扩展名
+	// 安全网：过滤 UE5 OFPA 外部路径
+	// __ExternalActors__/__ExternalObjects__ 烘焙时已合入 .umap，不应作为独立资源打包
+	// 不返回磁盘路径，避免 FPackageName fallback 从源码目录找到文件
+	if (HotUpdateUtils::IsExternalActorOrObjectPath(AssetPath))
+	{
+		UE_LOG(LogHotUpdateEditor, Verbose, TEXT("跳过 UE5 外部 Actor/Object 路径: %s"), *AssetPath);
+		return TEXT("");
+	}
+
+	// 从 /Game/ 提取相对路径
+	FString RelativePath = AssetPath;
+	if (RelativePath.StartsWith(TEXT("/Game/")))
+	{
+		RelativePath = RelativePath.Mid(6); // 去掉 "/Game/" 前缀
+	}
+	else if (RelativePath.StartsWith(TEXT("/")))
+	{
+		RelativePath = RelativePath.Mid(1); // 去掉前导 "/"
+	}
+
+	// 优先从 Cooked 目录解析（运行时需要 cooked 格式的 .uasset + .uexp）
+	if (!CookedPlatformDir.IsEmpty())
+	{
+		FString CookedContentDir = FPaths::Combine(CookedPlatformDir, FApp::GetProjectName(), TEXT("Content"));
+
+		// 先尝试 .umap（地图）
+		FString CookedMapPath = FPaths::Combine(CookedContentDir, RelativePath + TEXT(".umap"));
+		if (FPaths::FileExists(*CookedMapPath))
+		{
+			return CookedMapPath;
+		}
+
+		// 再尝试 .uasset（普通资源）
+		FString CookedAssetPath = FPaths::Combine(CookedContentDir, RelativePath + TEXT(".uasset"));
+		if (FPaths::FileExists(*CookedAssetPath))
+		{
+			return CookedAssetPath;
+		}
+	}
+
+	// 回退：使用 FPackageName 解析到原始 Content 目录
 	FString DiskPath = FPackageName::LongPackageNameToFilename(
 		AssetPath, FPackageName::GetAssetPackageExtension());
 
-	// 如果文件不存在，尝试地图扩展名
 	if (!FPaths::FileExists(*DiskPath))
 	{
 		FString MapDiskPath = FPackageName::LongPackageNameToFilename(
@@ -1628,7 +1716,7 @@ bool UHotUpdatePatchPackageBuilder::LoadPreviousPatchManifest(
 			FString Source = FileObj->GetStringField(TEXT("source"));
 			if (Source == TEXT("patch"))
 			{
-				FString Path = FileObj->GetStringField(TEXT("relativePath"));
+				FString Path = FileObj->GetStringField(TEXT("filePath"));
 				FString Hash = FileObj->GetStringField(TEXT("fileHash"));
 				int64 Size = (int64)FileObj->GetNumberField(TEXT("fileSize"));
 
@@ -1784,7 +1872,7 @@ bool UHotUpdatePatchPackageBuilder::LoadBaseContainers(
 			TSharedPtr<FJsonObject> FileObj = FileValue->AsObject();
 			if (!FileObj.IsValid()) continue;
 
-			FString Path = FileObj->GetStringField(TEXT("relativePath"));
+			FString Path = FileObj->GetStringField(TEXT("filePath"));
 			FString Hash = FileObj->GetStringField(TEXT("fileHash"));
 			int64 Size = (int64)FileObj->GetNumberField(TEXT("fileSize"));
 

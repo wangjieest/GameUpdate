@@ -79,7 +79,7 @@ void UHotUpdateHttpDownloader::AddDownloadTasks(const TArray<FHotUpdateFileInfo>
 {
 	for (const FHotUpdateFileInfo& File : Files)
 	{
-		FString FullUrl = BaseUrl.IsEmpty() ? File.DownloadUrl : BaseUrl / File.FilePath;
+		FString FullUrl = BaseUrl / File.FilePath;
 		FString SavePath = SaveDir / File.FilePath;
 		AddDownloadTask(FullUrl, SavePath, File.FileSize);
 	}

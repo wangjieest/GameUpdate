@@ -45,14 +45,6 @@ struct HOTUPDATE_API FHotUpdateVersionInfo
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
 	FString ReleaseNotes;
 
-	/// 强制更新标志
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	bool bForceUpdate;
-
-	/// 最低兼容版本
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	FString MinimumCompatibleVersion;
-
 	/// 比较版本号
 	bool operator>(const FHotUpdateVersionInfo& Other) const
 	{
@@ -76,21 +68,6 @@ struct HOTUPDATE_API FHotUpdateVersionInfo
 			&& MinorVersion == Other.MinorVersion
 			&& PatchVersion == Other.PatchVersion
 			&& BuildNumber == Other.BuildNumber;
-	}
-
-	bool operator!=(const FHotUpdateVersionInfo& Other) const
-	{
-		return !(*this == Other);
-	}
-
-	bool operator>=(const FHotUpdateVersionInfo& Other) const
-	{
-		return *this > Other || *this == Other;
-	}
-
-	bool operator<=(const FHotUpdateVersionInfo& Other) const
-	{
-		return *this < Other || *this == Other;
 	}
 
 	/// 获取 Hash 值（用于 TSet/TMap 键）
@@ -146,7 +123,6 @@ struct HOTUPDATE_API FHotUpdateVersionInfo
 		, PatchVersion(0)
 		, BuildNumber(0)
 		, Timestamp(0)
-		, bForceUpdate(false)
 	{
 	}
 };

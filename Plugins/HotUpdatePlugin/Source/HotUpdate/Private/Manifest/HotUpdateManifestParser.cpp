@@ -7,18 +7,6 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
-bool UHotUpdateManifestParser::LoadFromFile(const FString& FilePath, FHotUpdateManifest& OutManifest)
-{
-	FString JsonString;
-	if (!FFileHelper::LoadFileToString(JsonString, *FilePath))
-	{
-		UE_LOG(LogHotUpdate, Error, TEXT("Failed to load manifest file: %s"), *FilePath);
-		return false;
-	}
-
-	return ParseFromJson(JsonString, OutManifest);
-}
-
 bool UHotUpdateManifestParser::ParseFromJson(const FString& JsonString, FHotUpdateManifest& OutManifest)
 {
 	TSharedPtr<FJsonObject> JsonObject;

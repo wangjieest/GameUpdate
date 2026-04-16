@@ -8,23 +8,23 @@
 #include "HotUpdateCommandlet.generated.h"
 
 /**
-	 * 热更新打包命令行工具
-	 *
-	 * 使用方式:
-	 * UnrealEditor-Cmd MyProject -run=HotUpdate -mode=base -version=1.0.0 -platform=Windows -output=D:/Output
-	 * UnrealEditor-Cmd MyProject -run=HotUpdate -mode=patch -version=1.0.1 -baseversion=1.0.0 -platform=Windows -manifest=D:/Base/manifest.json -output=D:/Output
-	 *
-	 * 参数说明:
-	 * -mode           打包模式: base(完整exe/apk基础包), patch(热更包)
-	 * -version        版本号 (如 1.0.0)
-	 * -baseversion    基础版本号 (热更包需要)
-	 * -platform       目标平台: Windows, Android, IOS
-	 * -output         输出目录路径
-	 * -manifest       基础版本Manifest文件路径 (热更包需要)
-	 * -shipping       是否为发布版本构建 (base 模式)
-	 * -skipbuild      是否跳过编译步骤 (base 模式，避免 Live Coding 冲突)
-	 * -help           显示帮助信息
-	 */
+		 * 热更新打包命令行工具
+		 *
+		 * 使用方式:
+		 * UnrealEditor-Cmd MyProject -run=HotUpdate -mode=base -version=1.0.0 -platform=Windows -output=D:/Output
+		 * UnrealEditor-Cmd MyProject -run=HotUpdate -mode=patch -version=1.0.1 -baseversion=1.0.0 -platform=Windows -manifest=D:/Base/manifest.json -output=D:/Output
+		 *
+		 * 参数说明:
+		 * -mode           打包模式: base(完整exe/apk基础包), patch(热更包)
+		 * -version        版本号 (如 1.0.0)
+		 * -baseversion    基础版本号 (热更包需要)
+		 * -platform       目标平台: Windows, Android, IOS
+		 * -output         输出目录路径
+		 * -manifest       基础版本Manifest文件路径 (热更包需要)
+		 * -shipping       是否为发布版本构建 (base 模式)
+		 * -skipbuild      是否跳过编译步骤 (base 模式，避免 Live Coding 冲突)
+		 * -help           显示帮助信息
+		 */
 UCLASS()
 class UHotUpdateCommandlet : public UCommandlet
 {
@@ -51,17 +51,8 @@ private:
 	/** 从命令行参数转换为平台枚举 */
 	EHotUpdatePlatform ParsePlatform(const FString& InPlatformStr);
 
-	/** 从命令行参数转换为分包策略枚举 */
-	EHotUpdateChunkStrategy ParseChunkStrategy(const FString& InStrategyStr);
-
-	/** 从命令行参数转换为压缩格式字符串 */
-	FString ParseCompressionFormat(const FString& CompressionStr);
-
 	/** 从命令行参数转换为 Android 纹理格式枚举 */
 	EHotUpdateAndroidTextureFormat ParseTextureFormat(const FString& InFormatStr);
-
-	/** 查找中间版本的 Patch（用于链式热更） */
-	TArray<FString> FindIntermediatePatchVersions(const FString& InOutputDir, const FString& InBaseVersion, const FString& InTargetVersion);
 
 private:
 	// 命令行参数

@@ -33,18 +33,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HotUpdate|Pak")
 	bool UnmountPak(const FString& PakPath);
 
-	/// 挂载所有本地 Pak
-	UFUNCTION(BlueprintCallable, Category = "HotUpdate|Pak")
-	void MountAllLocalPaks();
-
-	/// 卸载所有已挂载的 Pak
-	UFUNCTION(BlueprintCallable, Category = "HotUpdate|Pak")
-	void UnmountAllPaks();
-
-	/// 验证 Pak 文件完整性
-	UFUNCTION(BlueprintCallable, Category = "HotUpdate|Pak")
-	bool VerifyPak(const FString& PakPath, const FString& ExpectedHash);
-
 	/// 获取已挂载的 Pak 列表
 	UFUNCTION(BlueprintPure, Category = "HotUpdate|Pak")
 	TArray<FHotUpdatePakMetadata> GetMountedPaks() const { return MountedPaks; }
@@ -52,10 +40,6 @@ public:
 	/// 检查 Pak 是否已挂载
 	UFUNCTION(BlueprintPure, Category = "HotUpdate|Pak")
 	bool IsPakMounted(const FString& PakPath) const;
-
-	/// 获取 Pak 内容列表（文件路径）
-	UFUNCTION(BlueprintCallable, Category = "HotUpdate|Pak")
-	TArray<FString> GetPakContentList(const FString& PakPath);
 
 	/// 获取 Pak 文件条目详细信息
 	UFUNCTION(BlueprintCallable, Category = "HotUpdate|Pak")

@@ -102,25 +102,3 @@ void UHotUpdateIncrementalCalculator::CalculateIncrementalDownload(
 		OutResult.UpdateContainers.Num(), OutResult.IncrementalDownloadSize / (1024.0 * 1024.0));
 }
 
-bool UHotUpdateIncrementalCalculator::IsLocalContainerValid(
-	const FString& StoragePath,
-	const FHotUpdateContainerInfo& Container) const
-{
-	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-
-	// 检查 utoc 文件是否存在
-	FString UtocPath = StoragePath / Container.UtocPath;
-	if (!PlatformFile.FileExists(*UtocPath))
-	{
-		return false;
-	}
-
-	// 检查 ucas 文件是否存在
-	FString UcasPath = StoragePath / Container.UcasPath;
-	if (!PlatformFile.FileExists(*UcasPath))
-	{
-		return false;
-	}
-
-	return true;
-}

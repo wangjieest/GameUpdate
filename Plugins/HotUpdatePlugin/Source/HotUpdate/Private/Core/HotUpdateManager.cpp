@@ -215,7 +215,6 @@ void UHotUpdateManager::HandleVersionCheckResponse(TSharedPtr<IHttpRequest> Requ
 	// 初始化增量下载统计
 	VersionCheckResult.UpdateFiles.Empty();
 	VersionCheckResult.UpdateContainers.Empty();
-	VersionCheckResult.TotalUpdateSize = 0;
 	VersionCheckResult.SkippedFileCount = 0;
 	VersionCheckResult.SkippedTotalSize = 0;
 	VersionCheckResult.AddedFileCount = 0;

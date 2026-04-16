@@ -38,18 +38,6 @@ UHotUpdateEditorSettings* UHotUpdateEditorSettings::Get()
 	return GetMutableDefault<UHotUpdateEditorSettings>();
 }
 
-FHotUpdatePackageConfig UHotUpdateEditorSettings::GetDefaultPackageConfig() const
-{
-	FHotUpdatePackageConfig Config;
-	Config.OutputFormat = DefaultOutputFormat;
-	Config.OutputDirectory = DefaultOutputDirectory;
-	Config.bEnableCompression = bDefaultEnableCompression;
-	Config.CompressionLevel = DefaultCompressionLevel;
-	Config.bIncludeDependencies = true;
-	Config.bGenerateManifest = true;
-	return Config;
-}
-
 FHotUpdateMinimalPackageConfig UHotUpdateEditorSettings::GetDefaultMinimalPackageConfig() const
 {
 	FHotUpdateMinimalPackageConfig Config;
@@ -74,11 +62,6 @@ int32 UHotUpdateEditorSettings::AllocateChunkId()
 	}
 
 	return ChunkId;
-}
-
-void UHotUpdateEditorSettings::SaveSettings()
-{
-	SaveConfig();
 }
 
 #undef LOCTEXT_NAMESPACE

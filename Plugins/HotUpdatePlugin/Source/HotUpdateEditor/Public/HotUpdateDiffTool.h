@@ -50,19 +50,9 @@ public:
 		const FString& TargetPakPath);
 
 	/**
-	 * 计算目录中所有资源的Hash
-	 */
-	TMap<FString, FString> ComputeDirectoryHashes(const FString& Directory, bool bRecursive = true);
-
-	/**
 	 * 获取资源类型图标名称
 	 */
 	static FName GetAssetIconName(const FString& AssetPath);
-
-	/**
-	 * 获取资源类型显示名称
-	 */
-	static FText GetAssetTypeDisplayName(const FString& AssetPath);
 
 	/**
 	 * 格式化文件大小

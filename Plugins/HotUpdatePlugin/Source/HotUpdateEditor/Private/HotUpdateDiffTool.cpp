@@ -329,41 +329,6 @@ FHotUpdateDiffReport UHotUpdateDiffTool::ComparePakFiles(
 	return Report;
 }
 
-TMap<FString, FString> UHotUpdateDiffTool::ComputeDirectoryHashes(const FString& Directory, bool bRecursive)
-{
-	TMap<FString, FString> Hashes;
-
-	// 规范化目录路径：统一分隔符，移除尾部斜杠
-	FString NormalizedDir = Directory;
-	FPaths::NormalizeDirectoryName(NormalizedDir);
-	NormalizedDir.ReplaceInline(TEXT("\\"), TEXT("/"));
-
-	TArray<FString> FoundFiles;
-	IFileManager::Get().FindFilesRecursive(FoundFiles, *NormalizedDir, TEXT("*.*"), true, false, bRecursive);
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("ComputeDirectoryHashes: Scanning '%s', found %d files"), *NormalizedDir, FoundFiles.Num());
-
-	for (const FString& File : FoundFiles)
-	{
-		// 使用字符串截取获取相对路径，而非 MakePathRelativeTo
-		// 因为 MakePathRelativeTo 内部会取 InRelativeTo 的父目录，导致相对路径包含目录名本身
-		FString RelativePath = File;
-		RelativePath.ReplaceInline(TEXT("\\"), TEXT("/"));
-		if (RelativePath.StartsWith(NormalizedDir))
-		{
-			RelativePath = RelativePath.RightChop(NormalizedDir.Len());
-			// 移除开头的路径分隔符
-			while (RelativePath.Len() > 0 && (RelativePath[0] == TEXT('/') || RelativePath[0] == TEXT('\\')))
-			{
-				RelativePath.RightChopInline(1);
-			}
-		}
-		FString Hash = UHotUpdateFileUtils::CalculateFileHash(File);
-		Hashes.Add(RelativePath, Hash);
-	}
-
-	return Hashes;
-}
 
 FName UHotUpdateDiffTool::GetAssetIconName(const FString& AssetPath)
 {
@@ -388,34 +353,6 @@ FName UHotUpdateDiffTool::GetAssetIconName(const FString& AssetPath)
 	}
 
 	return FName("ClassIcon.Object");
-}
-
-FText UHotUpdateDiffTool::GetAssetTypeDisplayName(const FString& AssetPath)
-{
-	FString Extension = FPaths::GetExtension(AssetPath).ToLower();
-
-	static TMap<FString, FText> ExtensionToDisplayName;
-	if (ExtensionToDisplayName.Num() == 0)
-	{
-		ExtensionToDisplayName.Add(TEXT("uasset"), FText::FromString(TEXT("Asset")));
-		ExtensionToDisplayName.Add(TEXT("umap"), FText::FromString(TEXT("Map")));
-		ExtensionToDisplayName.Add(TEXT("png"), FText::FromString(TEXT("Texture")));
-		ExtensionToDisplayName.Add(TEXT("tga"), FText::FromString(TEXT("Texture")));
-		ExtensionToDisplayName.Add(TEXT("jpg"), FText::FromString(TEXT("Texture")));
-		ExtensionToDisplayName.Add(TEXT("wav"), FText::FromString(TEXT("Sound")));
-		ExtensionToDisplayName.Add(TEXT("fbx"), FText::FromString(TEXT("Mesh")));
-		ExtensionToDisplayName.Add(TEXT("obj"), FText::FromString(TEXT("Mesh")));
-		ExtensionToDisplayName.Add(TEXT("pak"), FText::FromString(TEXT("Pak File")));
-		ExtensionToDisplayName.Add(TEXT("utoc"), FText::FromString(TEXT("IoStore TOC")));
-		ExtensionToDisplayName.Add(TEXT("ucas"), FText::FromString(TEXT("IoStore CAS")));
-	}
-
-	if (ExtensionToDisplayName.Contains(Extension))
-	{
-		return ExtensionToDisplayName[Extension];
-	}
-
-	return FText::FromString(FPaths::GetExtension(AssetPath));
 }
 
 void UHotUpdateDiffTool::ScanDirectory(
@@ -511,10 +448,6 @@ bool UHotUpdateDiffTool::ParseManifestFile(
 			if (FileObj->HasField(TEXT("chunkId")))
 			{
 				Entry.ChunkId = FileObj->GetIntegerField(TEXT("chunkId"));
-			}
-			if (FileObj->HasField(TEXT("source")))
-			{
-				Entry.Source = FileObj->GetStringField(TEXT("source"));
 			}
 
 			OutEntries.Add(Entry.FilePath, Entry);

@@ -158,50 +158,6 @@ bool UHotUpdatePakManager::UnmountPak(const FString& PakPath)
 	return bSuccess;
 }
 
-void UHotUpdatePakManager::MountAllLocalPaks()
-{
-	UE_LOG(LogHotUpdate, Log, TEXT("Mounting all local Paks"));
-
-	for (const FHotUpdatePakMetadata& Metadata : LocalPaksCache)
-	{
-		if (!IsPakMounted(Metadata.PakPath))
-		{
-			int32 PakOrder = CalculatePakOrder(Metadata.PakName, Metadata.Version);
-			MountPak(Metadata.PakPath, PakOrder);
-		}
-	}
-}
-
-void UHotUpdatePakManager::UnmountAllPaks()
-{
-	UE_LOG(LogHotUpdate, Log, TEXT("Unmounting all Paks"));
-
-	// 复制列表，因为 UnmountPak 会修改 MountedPaks
-	TArray<FHotUpdatePakMetadata> PaksToUnmount = MountedPaks;
-	for (const FHotUpdatePakMetadata& Metadata : PaksToUnmount)
-	{
-		UnmountPak(Metadata.PakPath);
-	}
-}
-
-bool UHotUpdatePakManager::VerifyPak(const FString& PakPath, const FString& ExpectedHash)
-{
-	FString ActualHash = UHotUpdateFileUtils::CalculateFileHash(PakPath);
-	if (ActualHash.IsEmpty())
-	{
-		UE_LOG(LogHotUpdate, Error, TEXT("Failed to calculate hash for: %s"), *PakPath);
-		return false;
-	}
-
-	bool bMatch = ActualHash.Equals(ExpectedHash, ESearchCase::IgnoreCase);
-	if (!bMatch)
-	{
-		UE_LOG(LogHotUpdate, Warning, TEXT("Pak hash mismatch. Expected: %s, Actual: %s"), *ExpectedHash, *ActualHash);
-	}
-
-	return bMatch;
-}
-
 bool UHotUpdatePakManager::IsPakMounted(const FString& PakPath) const
 {
 	for (const FHotUpdatePakMetadata& Metadata : MountedPaks)
@@ -212,43 +168,6 @@ bool UHotUpdatePakManager::IsPakMounted(const FString& PakPath) const
 		}
 	}
 	return false;
-}
-
-TArray<FString> UHotUpdatePakManager::GetPakContentList(const FString& PakPath)
-{
-	TArray<FString> ContentList;
-
-	// 检查文件是否存在
-	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-	if (!PlatformFile.FileExists(*PakPath))
-	{
-		UE_LOG(LogHotUpdate, Error, TEXT("Pak file not found: %s"), *PakPath);
-		return ContentList;
-	}
-
-	// 使用 IPlatformFile 创建 FPakFile
-	TRefCountPtr<FPakFile> PakFile = new FPakFile(&PlatformFile, *PakPath, false);
-	if (!PakFile.IsValid() || !PakFile->IsValid())
-	{
-		UE_LOG(LogHotUpdate, Error, TEXT("Failed to open Pak file: %s"), *PakPath);
-		return ContentList;
-	}
-
-	// 检查是否有文件名索引
-	if (!PakFile->HasFilenames())
-	{
-		UE_LOG(LogHotUpdate, Warning, TEXT("Pak file does not have filename index: %s"), *PakPath);
-	}
-
-	// 遍历 Pak 文件中的所有条目 (UE5.7 使用 FFilenameIterator 遍历有文件名的条目)
-	for (FPakFile::FFilenameIterator It(*PakFile); It; ++It)
-	{
-		ContentList.Add(It.Filename());
-	}
-
-	UE_LOG(LogHotUpdate, Log, TEXT("Found %d files in Pak: %s"), ContentList.Num(), *PakPath);
-
-	return ContentList;
 }
 
 TArray<FHotUpdatePakEntry> UHotUpdatePakManager::GetPakEntries(const FString& PakPath)

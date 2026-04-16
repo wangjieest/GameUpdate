@@ -26,21 +26,8 @@ struct HOTUPDATE_API FHotUpdateFileInfo
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
 	FString FileHash;
 
-	/// 下载 URL
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	FString DownloadUrl;
-
-	/// 变更类型
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	EHotUpdateFileChangeType ChangeType;
-
-	/// 依赖的 Chunk ID 列表
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	TArray<int32> DependencyChunks;
-
 	FHotUpdateFileInfo()
 		: FileSize(0)
-		, ChangeType(EHotUpdateFileChangeType::Unchanged)
 	{
 	}
 };
@@ -65,10 +52,6 @@ struct HOTUPDATE_API FHotUpdateManifestEntry
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
 	FString FileHash;
 
-	/// 文件 MD5 Hash（兼容某些服务器）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	FString FileMd5;
-
 	/// 所属 Chunk ID
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
 	int32 ChunkId;
@@ -84,18 +67,6 @@ struct HOTUPDATE_API FHotUpdateManifestEntry
 	/// 压缩后大小
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
 	int64 CompressedSize;
-
-	/// 下载 URL（可选覆盖）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	FString CustomDownloadUrl;
-
-	/// 依赖文件列表
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	TArray<FString> Dependencies;
-
-	/// 文件来源（base/patch）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	FString Source;
 
 	FHotUpdateManifestEntry()
 		: FileSize(0)

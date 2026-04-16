@@ -3,7 +3,6 @@
 #include "HotUpdate.h"
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
-#include "Interfaces/IPluginManager.h"
 
 // 日志分类定义
 DEFINE_LOG_CATEGORY(LogHotUpdate);

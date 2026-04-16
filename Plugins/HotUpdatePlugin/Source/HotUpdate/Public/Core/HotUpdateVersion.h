@@ -37,10 +37,6 @@ struct HOTUPDATE_API FHotUpdateVersionCheckResult
 	UPROPERTY(BlueprintReadOnly, Category = "HotUpdate")
 	TArray<FHotUpdateFileInfo> UpdateFiles;
 
-	/// 总更新大小
-	UPROPERTY(BlueprintReadOnly, Category = "HotUpdate")
-	int64 TotalUpdateSize;
-
 	/// 错误信息
 	UPROPERTY(BlueprintReadOnly, Category = "HotUpdate")
 	FString ErrorMessage;
@@ -73,7 +69,6 @@ struct HOTUPDATE_API FHotUpdateVersionCheckResult
 
 	FHotUpdateVersionCheckResult()
 		: bHasUpdate(false)
-		, TotalUpdateSize(0)
 		, SkippedFileCount(0)
 		, SkippedTotalSize(0)
 		, AddedFileCount(0)

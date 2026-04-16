@@ -308,6 +308,11 @@ FString UHotUpdateIoStoreBuilder::GetPakInternalPath(const FString& AssetPath, c
 	{
 		PakPath = FString::Printf(TEXT("../../../Engine/Content/%s"), *PakPath.Mid(9));
 	}
+	else if (PakPath.StartsWith(TEXT("/")) && !PakPath.StartsWith(TEXT("/Game/")) && !PakPath.StartsWith(TEXT("/Engine/")))
+	{
+		// 插件路径：/PluginName/SubPath -> ../../../Engine/Plugins/PluginName/SubPath
+		PakPath = FString::Printf(TEXT("../../../Engine/Plugins/%s"), *PakPath.Mid(1));
+	}
 
 	// 确保使用正斜杠
 	PakPath.ReplaceCharInline('\\', '/');

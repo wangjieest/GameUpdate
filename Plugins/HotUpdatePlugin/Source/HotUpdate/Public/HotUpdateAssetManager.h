@@ -39,11 +39,6 @@ public:
 	//~End of UAssetManager interface
 #endif
 
-	/**
-	 * Check if an asset path is in the whitelist.
-	 */
-	static bool IsInWhitelist(const FString& AssetPath);
-
 #if WITH_EDITOR
 private:
 	static void CollectDependenciesRecursive(

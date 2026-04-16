@@ -16,9 +16,6 @@ class HOTUPDATE_API UHotUpdateManifestParser : public UObject
 
 public:
 	UFUNCTION(BlueprintCallable, Category = "HotUpdate|Manifest")
-	static bool LoadFromFile(const FString& FilePath, FHotUpdateManifest& OutManifest);
-
-	UFUNCTION(BlueprintCallable, Category = "HotUpdate|Manifest")
 	static bool ParseFromJson(const FString& JsonString, FHotUpdateManifest& OutManifest);
 
 	UFUNCTION(BlueprintCallable, Category = "HotUpdate|Manifest")

@@ -82,9 +82,6 @@ struct HOTUPDATEEDITOR_API FHotUpdateChunkAnalysisResult
 	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	TMap<FString, int32> AssetToChunkMap;
 
-	/// Chunk 依赖图（Chunk ID -> 依赖的 Chunk ID 列表）
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
-	TMap<int32, FHotUpdateInt32Array> DependencyGraph;
 
 	/// 统计信息
 	UPROPERTY(BlueprintReadOnly, Category = "Result")

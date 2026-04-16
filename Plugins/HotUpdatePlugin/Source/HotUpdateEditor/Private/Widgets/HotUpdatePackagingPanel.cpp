@@ -38,8 +38,6 @@
 #define LOCTEXT_NAMESPACE "HotUpdatePackagingPanel"
 
 // 使用统一的样式类
-using FStatusColors = FHotUpdateEditorStyle::FStatusColors;
-using FDiffColors = FHotUpdateEditorStyle::FDiffColors;
 
 void SHotUpdatePackagingPanel::Construct(const FArguments& InArgs)
 {

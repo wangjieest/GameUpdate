@@ -36,14 +36,4 @@ public:
 		const FHotUpdateManifest& ServerManifest,
 		const FHotUpdateManifest& LocalManifest,
 		FHotUpdateVersionCheckResult& OutResult);
-
-	/**
-	 * 检查本地 Container 文件是否存在
-	 * @param StoragePath 存储路径
-	 * @param Container Container 信息
-	 * @return Container 文件是否存在
-	 */
-	bool IsLocalContainerValid(
-		const FString& StoragePath,
-		const FHotUpdateContainerInfo& Container) const;
 };

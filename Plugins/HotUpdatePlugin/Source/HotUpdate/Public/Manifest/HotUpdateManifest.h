@@ -32,31 +32,15 @@ struct HOTUPDATE_API FHotUpdateManifest
 
 	/// === 基础包字段 ===
 
-	/// Chunk ID 列表
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	TArray<int32> ChunkIds;
-
-	/// Chunk 名称映射
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	TMap<int32, FString> ChunkNames;
-
 	/// Chunk 定义列表（包含依赖关系）
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
 	TArray<FHotUpdateChunkInfo> Chunks;
-
-	/// Chunk 依赖图（父 Chunk ID -> 子 Chunk ID 列表）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	TMap<int32, FHotUpdateInt32Array> ChunkDependencies;
 
 	/// === 更新包字段 ===
 
 	/// 基础版本号（仅更新包有效）
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
 	FString BaseVersion;
-
-	/// 差异摘要（仅更新包有效）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	FHotUpdateDiffSummary DiffSummary;
 
 	/// === 全量热更新字段 ===
 
@@ -72,12 +56,6 @@ struct HOTUPDATE_API FHotUpdateManifest
 	UPROPERTY(BlueprintReadOnly, Category = "HotUpdate")
 	int64 TotalDownloadSize;
 
-	/// === 最小包字段 ===
-
-	/// 是否是最小包
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	bool bIsMinimalPackage;
-
 	/// === 通用字段 ===
 
 	/// 容器文件列表（.utoc/.ucas）
@@ -87,14 +65,6 @@ struct HOTUPDATE_API FHotUpdateManifest
 	/// 所有文件条目
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
 	TArray<FHotUpdateManifestEntry> Files;
-
-	/// 总文件大小
-	UPROPERTY(BlueprintReadOnly, Category = "HotUpdate")
-	int64 TotalFileSize;
-
-	/// 总压缩大小
-	UPROPERTY(BlueprintReadOnly, Category = "HotUpdate")
-	int64 TotalCompressedSize;
 
 	/// 计算总大小
 	void BuildPathIndex();
@@ -114,9 +84,6 @@ struct HOTUPDATE_API FHotUpdateManifest
 		, bIncludesBaseContainers(false)
 		, bRequiresBasePackage(true)
 		, TotalDownloadSize(0)
-		, bIsMinimalPackage(false)
-		, TotalFileSize(0)
-		, TotalCompressedSize(0)
 		, bPathIndexBuilt(false)
 	{
 	}

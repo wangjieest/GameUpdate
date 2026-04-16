@@ -956,9 +956,10 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(
 				for (const FName& Dep : Dependencies)
 				{
 					FString DepStr = Dep.ToString();
-					// 只收集项目资源依赖（/Game/ 开头）
-					// 不包含引擎资源（/Engine/）和插件资源（如 /NNE/）
-					if (DepStr.StartsWith(TEXT("/Game/")))
+					// 收集所有资源依赖：/Game/（项目）、/Engine/（引擎）、插件（如 /NNE/）
+					// 排除 /Script/ 路径（不是资源路径）
+					if (DepStr.StartsWith(TEXT("/Game/")) || DepStr.StartsWith(TEXT("/Engine/")) ||
+						(DepStr.StartsWith(TEXT("/")) && !DepStr.StartsWith(TEXT("/Script/"))))
 					{
 						UniquePaths.Add(DepStr);
 					}
@@ -968,26 +969,7 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(
 
 		AllAssetPaths = UniquePaths.Array();
 	}
-
-	// 过滤非项目资源：只保留 /Game/ 开头的资源
-	// Patch 包不应该包含引擎或插件资源，这些资源在基础包中已存在
-	int32 FilteredCount = 0;
-	AllAssetPaths.RemoveAll([&FilteredCount](const FString& Path)
-	{
-		if (!Path.StartsWith(TEXT("/Game/")))
-		{
-			FilteredCount++;
-			UE_LOG(LogHotUpdateEditor, Verbose, TEXT("过滤非项目资源: %s"), *Path);
-			return true;
-		}
-		return false;
-	});
-
-	if (FilteredCount > 0)
-	{
-		UE_LOG(LogHotUpdateEditor, Log, TEXT("过滤掉 %d 个非项目资源（引擎/插件资源）"), FilteredCount);
-	}
-
+	
 	// 获取磁盘路径
 	// 使用 Cooked 目录解析磁盘路径，文件不存在则自动过滤（包括 OFPA 等已合入 .umap 的资源）
 	FString CookedPlatformDir = FPaths::ProjectSavedDir() / TEXT("Cooked") / HotUpdateUtils::GetPlatformString(Config.Platform);
@@ -1584,31 +1566,35 @@ FString UHotUpdatePatchPackageBuilder::FileNameToAssetPath(const FString& FileNa
 
 FString UHotUpdatePatchPackageBuilder::GetAssetDiskPath(const FString& AssetPath, const FString& CookedPlatformDir)
 {
-	// 从 /Game/ 提取相对路径
-	FString RelativePath = AssetPath;
-	if (RelativePath.StartsWith(TEXT("/Game/")))
-	{
-		RelativePath = RelativePath.Mid(6); // 去掉 "/Game/" 前缀
-	}
-	else if (RelativePath.StartsWith(TEXT("/")))
-	{
-		RelativePath = RelativePath.Mid(1); // 去掉前导 "/"
-	}
-
 	// 从 Cooked 目录解析（运行时需要 cooked 格式的 .uasset + .uexp）
 	if (!CookedPlatformDir.IsEmpty())
 	{
-		FString CookedContentDir = FPaths::Combine(CookedPlatformDir, FApp::GetProjectName(), TEXT("Content"));
+		// 使用 FPackageName 的 mount point 机制解析路径，支持 /Game/、/Engine/、插件路径等所有类型
+		// FPackageName 返回的路径基于项目根目录（如 ../../../GameUpdate/Content/... 或 ../../../Engine/Content/...）
+		// 需要将其映射到 Cooked 目录结构
+		FString ResolvedPath;
+		if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, ResolvedPath, TEXT("")))
+		{
+			return TEXT("");
+		}
+
+		// ResolvedPath 格式: ../../../{ProjectName}/Content/X 或 ../../../Engine/Content/X 或 ../../../Engine/Plugins/...
+		// 去掉 "../../../" 前缀，得到相对于项目根目录的路径
+		FString RelativePath = ResolvedPath;
+		if (RelativePath.StartsWith(TEXT("../../../")))
+		{
+			RelativePath = RelativePath.Mid(9); // 去掉 "../../../"
+		}
 
 		// 先尝试 .umap（地图）
-		FString CookedMapPath = FPaths::Combine(CookedContentDir, RelativePath + TEXT(".umap"));
+		FString CookedMapPath = FPaths::Combine(CookedPlatformDir, RelativePath + TEXT(".umap"));
 		if (FPaths::FileExists(*CookedMapPath))
 		{
 			return CookedMapPath;
 		}
 
 		// 再尝试 .uasset（普通资源）
-		FString CookedAssetPath = FPaths::Combine(CookedContentDir, RelativePath + TEXT(".uasset"));
+		FString CookedAssetPath = FPaths::Combine(CookedPlatformDir, RelativePath + TEXT(".uasset"));
 		if (FPaths::FileExists(*CookedAssetPath))
 		{
 			return CookedAssetPath;

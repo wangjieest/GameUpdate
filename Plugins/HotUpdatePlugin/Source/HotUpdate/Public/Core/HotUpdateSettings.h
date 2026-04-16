@@ -77,32 +77,6 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Behavior")
 	bool bAutoCheckOnStartup;
 
-	/// 自动下载更新
-	UPROPERTY(Config, EditAnywhere, Category = "Behavior")
-	bool bAutoDownloadUpdates;
-
-	/// Wi-Fi 下自动下载
-	UPROPERTY(Config, EditAnywhere, Category = "Behavior")
-	bool bAutoDownloadOnWifiOnly;
-
-	/// 是否显示更新提示
-	UPROPERTY(Config, EditAnywhere, Category = "Behavior")
-	bool bShowUpdateNotification;
-
-	// == 调试配置 ==
-
-	/// 启用详细日志
-	UPROPERTY(Config, EditAnywhere, Category = "Debug")
-	bool bEnableVerboseLog;
-
-	/// 模拟网络延迟（秒）
-	UPROPERTY(Config, EditAnywhere, Category = "Debug", meta = (ClampMin = "0"))
-	float SimulatedLatency;
-
-	/// 模拟下载失败率（0-1）
-	UPROPERTY(Config, EditAnywhere, Category = "Debug", meta = (ClampMin = "0", ClampMax = "1"))
-	float SimulatedFailureRate;
-
 	/// 获取本地 Pak 存储完整路径
 	FString GetLocalPakFullPath() const;
 

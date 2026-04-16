@@ -12,7 +12,6 @@
 
 class UHotUpdateHttpDownloader;
 class UHotUpdatePakManager;
-class UHotUpdateManifestParser;
 class UHotUpdateVersionStorage;
 class UHotUpdateIncrementalCalculator;
 
@@ -199,9 +198,6 @@ private:
 
 	/// 自动检查更新的定时器句柄
 	FTimerHandle AutoCheckTimerHandle;
-
-	/// 下载文件列表缓存
-	TArray<FHotUpdateFileInfo> PendingDownloadFiles;
 
 	/// 缓存的服务器 Manifest（用于成功更新后保存到本地）
 	FHotUpdateManifest CachedServerManifest;

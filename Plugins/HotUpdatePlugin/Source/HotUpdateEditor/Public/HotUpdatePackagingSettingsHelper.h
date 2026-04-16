@@ -108,12 +108,6 @@ public:
 	 */
 	static FString NormalizeAssetPath(const FString& Path);
 
-	/**
-	 * 获取配置摘要信息，用于UI显示
-	 * @param Settings 项目打包设置
-	 * @return 配置摘要文本
-	 */
-	static FText GetSettingsSummary(UProjectPackagingSettings* Settings);
 
 private:
 	/**

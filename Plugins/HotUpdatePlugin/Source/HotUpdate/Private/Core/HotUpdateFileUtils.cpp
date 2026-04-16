@@ -122,25 +122,9 @@ bool UHotUpdateFileUtils::HexToBytes(const FString& HexString, TArray<uint8>& Ou
 	return true;
 }
 
-int64 UHotUpdateFileUtils::GetFileSize(const FString& FilePath)
-{
-	return IFileManager::Get().FileSize(*FilePath);
-}
-
 bool UHotUpdateFileUtils::FileExists(const FString& FilePath)
 {
 	return IFileManager::Get().FileExists(*FilePath);
-}
-
-bool UHotUpdateFileUtils::DirectoryExists(const FString& DirectoryPath)
-{
-	return FPaths::DirectoryExists(DirectoryPath);
-}
-
-bool UHotUpdateFileUtils::CreateDirectoryTree(const FString& DirectoryPath)
-{
-	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-	return PlatformFile.CreateDirectoryTree(*DirectoryPath);
 }
 
 bool UHotUpdateFileUtils::DeleteDirectoryRecursively(const FString& DirectoryPath)

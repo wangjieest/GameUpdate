@@ -224,50 +224,6 @@ FString FHotUpdatePackagingSettingsHelper::NormalizeAssetPath(const FString& Pat
 	return Result;
 }
 
-FText FHotUpdatePackagingSettingsHelper::GetSettingsSummary(UProjectPackagingSettings* Settings)
-{
-	if (!Settings)
-	{
-		return FText::FromString(TEXT("无法获取项目打包设置"));
-	}
-
-	FString Summary;
-
-	// MapsToCook
-	if (Settings->MapsToCook.Num() > 0)
-	{
-		Summary += FString::Printf(TEXT("地图: %d 个\n"), Settings->MapsToCook.Num());
-	}
-
-	// DirectoriesToAlwaysCook
-	if (Settings->DirectoriesToAlwaysCook.Num() > 0)
-	{
-		Summary += FString::Printf(TEXT("AlwaysCook目录: %d 个\n"), Settings->DirectoriesToAlwaysCook.Num());
-	}
-
-	// DirectoriesToNeverCook
-	if (Settings->DirectoriesToNeverCook.Num() > 0)
-	{
-		Summary += FString::Printf(TEXT("NeverCook目录: %d 个\n"), Settings->DirectoriesToNeverCook.Num());
-	}
-
-	// 其他配置
-	if (Settings->bCookAll)
-	{
-		Summary += TEXT("CookAll: 是\n");
-	}
-	if (Settings->bSkipEditorContent)
-	{
-		Summary += TEXT("跳过编辑器内容: 是\n");
-	}
-
-	if (Summary.IsEmpty())
-	{
-		Summary = TEXT("未配置任何打包选项");
-	}
-
-	return FText::FromString(Summary);
-}
 
 bool FHotUpdatePackagingSettingsHelper::IsEditorContent(const FString& AssetPath)
 {

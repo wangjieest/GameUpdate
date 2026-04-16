@@ -57,18 +57,6 @@ enum class EHotUpdateBuildConfiguration : uint8
 };
 
 /**
- * 差异比较源类型
- */
-UENUM(BlueprintType)
-enum class EHotUpdateDiffSourceType : uint8
-{
-	None            UMETA(DisplayName = "无（全量打包）"),
-	Manifest        UMETA(DisplayName = "Manifest文件"),
-	Pak             UMETA(DisplayName = "Pak文件"),
-	SavedBaseVersion UMETA(DisplayName = "已保存的基础版本")
-};
-
-/**
  * 分包策略
  */
 UENUM(BlueprintType)
@@ -279,16 +267,13 @@ struct HOTUPDATEEDITOR_API FHotUpdateSizeBasedChunkConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Size")
 	bool bSortBySize;
 
-	/// 是否尝试均衡分布（尽量让每个 Chunk 大小接近）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Size")
-	bool bBalanceDistribution;
 
 	FHotUpdateSizeBasedChunkConfig()
 		: MaxChunkSizeMB(256)
 		, ChunkNamePrefix(TEXT("Chunk"))
 		, ChunkIdStart(0)
 		, bSortBySize(true)
-		, bBalanceDistribution(false)
+		
 	{
 	}
 };
@@ -1003,10 +988,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPackageProgressDelegate, const FH
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnBasePackageCompleteDelegate, const FHotUpdateBasePackageResult&, Result);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPatchPackageCompleteDelegate, const FHotUpdatePatchPackageResult&, Result);
 
-// 多播委托（用于 Slate）
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnPackageProgressMulticastDelegate, const FHotUpdatePackageProgress&);
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnBasePackageCompleteMulticastDelegate, const FHotUpdateBasePackageResult&);
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnPatchPackageCompleteMulticastDelegate, const FHotUpdatePatchPackageResult&);
 
 /**
  * 输出格式

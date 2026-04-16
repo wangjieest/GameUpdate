@@ -108,15 +108,9 @@ public:
 	/// 获取设置实例
 	static UHotUpdateEditorSettings* Get();
 
-	/// 获取默认打包配置
-	FHotUpdatePackageConfig GetDefaultPackageConfig() const;
-
 	/// 获取默认最小包配置
 	FHotUpdateMinimalPackageConfig GetDefaultMinimalPackageConfig() const;
 
 	/// 分配新的Chunk ID
 	int32 AllocateChunkId();
-
-	/// 保存设置
-	void SaveSettings();
 };

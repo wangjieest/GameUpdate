@@ -1071,12 +1071,16 @@ bool UHotUpdatePatchPackageBuilder::LoadBaseManifest(
 			TSharedPtr<FJsonObject> FileObj = FileValue->AsObject();
 			if (!FileObj.IsValid()) continue;
 
-			FString Path = FileObj->GetStringField(TEXT("filePath"));
+			FString FilePath = FileObj->GetStringField(TEXT("filePath"));
 			FString Hash = FileObj->GetStringField(TEXT("fileHash"));
 			int64 Size = (int64)FileObj->GetNumberField(TEXT("fileSize"));
 
-			OutAssetHashes.Add(Path, Hash);
-			OutAssetSizes.Add(Path, Size);
+			// 将 filePath 从 manifest 格式（"Game/Path/File.ext"）归一化为 UE Long Package Name 格式（"/Game/Path/File"）
+			// 以便与 CollectAssets 产生的键格式匹配
+			FString NormalizedPath = FileNameToAssetPath(FilePath);
+
+			OutAssetHashes.Add(NormalizedPath, Hash);
+			OutAssetSizes.Add(NormalizedPath, Size);
 		}
 	}
 
@@ -1102,7 +1106,8 @@ bool UHotUpdatePatchPackageBuilder::ComputeDiff(
 
 		FHotUpdateAssetDiff Diff;
 		Diff.AssetPath = Path;
-		Diff.AssetType = FPaths::GetExtension(Path);
+		Diff.AssetType = Path.Contains(TEXT("/Maps/")) || Path.EndsWith(TEXT("_Map"))
+				? TEXT("umap") : TEXT("uasset");
 
 		if (!bInBase && bInCurrent)
 		{
@@ -1554,6 +1559,29 @@ FString UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(const FString&
 	return FileName;
 }
 
+FString UHotUpdatePatchPackageBuilder::FileNameToAssetPath(const FString& FileName)
+{
+	FString AssetPath = FileName;
+
+	// 添加前导斜杠（如 "Game/Startup/umg_hotupdate.uasset" -> "/Game/Startup/umg_hotupdate.uasset"）
+	if (!AssetPath.StartsWith(TEXT("/")))
+	{
+		AssetPath = TEXT("/") + AssetPath;
+	}
+
+	// 移除已知的资源文件扩展名
+	if (AssetPath.EndsWith(TEXT(".uasset")))
+	{
+		AssetPath.LeftChopInline(8); // strlen(".uasset")
+	}
+	else if (AssetPath.EndsWith(TEXT(".umap")))
+	{
+		AssetPath.LeftChopInline(5); // strlen(".umap")
+	}
+
+	return AssetPath;
+}
+
 FString UHotUpdatePatchPackageBuilder::GetAssetDiskPath(const FString& AssetPath, const FString& CookedPlatformDir)
 {
 	// 从 /Game/ 提取相对路径
@@ -1728,12 +1756,13 @@ bool UHotUpdatePatchPackageBuilder::LoadPreviousPatchManifest(
 			FString Source = FileObj->GetStringField(TEXT("source"));
 			if (Source == TEXT("patch"))
 			{
-				FString Path = FileObj->GetStringField(TEXT("filePath"));
+				FString FilePath = FileObj->GetStringField(TEXT("filePath"));
 				FString Hash = FileObj->GetStringField(TEXT("fileHash"));
 				int64 Size = (int64)FileObj->GetNumberField(TEXT("fileSize"));
 
-				OutPatchFilesHash.Add(Path, Hash);
-				OutPatchFilesSize.Add(Path, Size);
+				FString NormalizedPath = FileNameToAssetPath(FilePath);
+				OutPatchFilesHash.Add(NormalizedPath, Hash);
+				OutPatchFilesSize.Add(NormalizedPath, Size);
 			}
 		}
 	}
@@ -1884,9 +1913,11 @@ bool UHotUpdatePatchPackageBuilder::LoadBaseContainers(
 			TSharedPtr<FJsonObject> FileObj = FileValue->AsObject();
 			if (!FileObj.IsValid()) continue;
 
-			FString Path = FileObj->GetStringField(TEXT("filePath"));
+			FString FilePath = FileObj->GetStringField(TEXT("filePath"));
 			FString Hash = FileObj->GetStringField(TEXT("fileHash"));
 			int64 Size = (int64)FileObj->GetNumberField(TEXT("fileSize"));
+
+			FString NormalizedPath = FileNameToAssetPath(FilePath);
 
 			// 检查 source 字段，只添加 base 资源
 			FString Source = TEXT("base");
@@ -1897,8 +1928,8 @@ bool UHotUpdatePatchPackageBuilder::LoadBaseContainers(
 
 			if (Source == TEXT("base") || Source.IsEmpty())
 			{
-				OutFilesHash.Add(Path, Hash);
-				OutFilesSize.Add(Path, Size);
+				OutFilesHash.Add(NormalizedPath, Hash);
+				OutFilesSize.Add(NormalizedPath, Size);
 			}
 		}
 	}

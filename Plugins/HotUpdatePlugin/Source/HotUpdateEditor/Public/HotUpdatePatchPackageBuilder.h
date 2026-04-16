@@ -79,6 +79,14 @@ public:
 	 */
 	static FString ConvertAssetPathToFileName(const FString& AssetPath);
 
+
+	/**
+	 * 将文件名（相对路径，带后缀）转换回资源路径
+	 * 如 "Game/Startup/umg_hotupdate.uasset" -> "/Game/Startup/umg_hotupdate"
+	 * 如 "Game/Maps/MainMenu.umap" -> "/Game/Maps/MainMenu"
+	 * 这是 ConvertAssetPathToFileName 的逆操作，用于归一化 Manifest 中的键格式
+	 */
+	static FString FileNameToAssetPath(const FString& FileName);
 	/**
 	 * 获取资源磁盘路径
 	 */

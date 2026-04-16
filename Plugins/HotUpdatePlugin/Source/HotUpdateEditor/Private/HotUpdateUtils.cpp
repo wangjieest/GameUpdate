@@ -1,6 +1,7 @@
 // Copyright czm. All Rights Reserved.
 
 #include "HotUpdateUtils.h"
+#include "Misc/Paths.h"
 
 FString HotUpdateUtils::GetPlatformString(EHotUpdatePlatform Platform)
 {
@@ -30,4 +31,9 @@ FString HotUpdateUtils::GetPlatformDirectoryName(EHotUpdatePlatform Platform)
 	default:
 		return TEXT("Win64");
 	}
+}
+
+FString HotUpdateUtils::GetCookedPlatformDir(EHotUpdatePlatform Platform)
+{
+	return FPaths::ProjectSavedDir() / TEXT("Cooked") / GetPlatformString(Platform);
 }

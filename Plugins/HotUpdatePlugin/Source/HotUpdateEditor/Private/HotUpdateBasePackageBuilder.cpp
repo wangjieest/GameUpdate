@@ -50,6 +50,8 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackage(const
 		ModifiedConfig.IoStoreConfig.bEncryptContent = EditorSettings->bDefaultEncryptContent;
 	}
 
+	CurrentConfig = ModifiedConfig;
+
 	FHotUpdateBasePackageResult Result;
 
 	// 验证配置
@@ -70,7 +72,7 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackage(const
 	if (!ModifiedConfig.bSkipBuild)
 	{
 		UpdateProgress(TEXT("编译项目"), TEXT(""), 0, 0);
-		if (!CompileProject(ModifiedConfig))
+		if (!CompileProject())
 		{
 			Result.bSuccess = false;
 			Result.ErrorMessage = TEXT("项目编译失败");
@@ -87,7 +89,7 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackage(const
 	if (!ModifiedConfig.bSkipCook)
 	{
 		UpdateProgress(TEXT("Cook 资源"), TEXT(""), 0, 0);
-		if (!CookAssets(ModifiedConfig))
+		if (!CookAssets())
 		{
 			Result.bSuccess = false;
 			Result.ErrorMessage = TEXT("Cook 资源失败");
@@ -106,7 +108,7 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackage(const
 	TArray<FString> AssetPaths;
 	TMap<FString, FString> AssetDiskPaths;
 
-	if (!CollectAssets(Config, AssetPaths, AssetDiskPaths, ErrorMessage))
+	if (!CollectAssets( AssetPaths, AssetDiskPaths, ErrorMessage))
 	{
 		Result.bSuccess = false;
 		Result.ErrorMessage = ErrorMessage;
@@ -124,11 +126,10 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackage(const
 
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("收集了 %d 个资源"), AssetPaths.Num());
 
-	return BuildBasePackageInternal(ModifiedConfig, AssetPaths, AssetDiskPaths);
+	return BuildBasePackageInternal( AssetPaths, AssetDiskPaths);
 }
 
 FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackageInternal(
-	const FHotUpdateBasePackageConfig& Config,
 	const TArray<FString>& AssetPaths,
 	const TMap<FString, FString>& AssetDiskPaths)
 {
@@ -139,7 +140,7 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackageIntern
 
 	FHotUpdateChunkAnalysisResult ChunkResult;
 
-	if (Config.MinimalPackageConfig.bEnableMinimalPackage &&
+	if (CurrentConfig.MinimalPackageConfig.bEnableMinimalPackage &&
 		(MinimalWhitelistAssets.Num() > 0 || MinimalEngineAssets.Num() > 0))
 	{
 // 小包模式：手动创建 chunk 0（白名单 + 引擎资产）
@@ -167,11 +168,11 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackageIntern
 		{
 			UHotUpdateChunkManager* BusinessChunkManager = NewObject<UHotUpdateChunkManager>();
 			FHotUpdateChunkAnalysisConfig BusinessConfig;
-			BusinessConfig.ChunkStrategy = Config.ChunkStrategy;
-			BusinessConfig.MaxChunkSizeMB = Config.MaxChunkSizeMB;
-			BusinessConfig.SizeBasedConfig = Config.SizeBasedConfig;
+			BusinessConfig.ChunkStrategy = CurrentConfig.ChunkStrategy;
+			BusinessConfig.MaxChunkSizeMB = CurrentConfig.MaxChunkSizeMB;
+			BusinessConfig.SizeBasedConfig = CurrentConfig.SizeBasedConfig;
 			BusinessConfig.SizeBasedConfig.ChunkIdStart = 1;
-			BusinessConfig.DirectoryChunkRules = Config.DirectoryChunkRules;
+			BusinessConfig.DirectoryChunkRules = CurrentConfig.DirectoryChunkRules;
 			BusinessConfig.bAnalyzeDependencies = true;
 			BusinessConfig.BaseChunkIdStart = 1;
 			BusinessConfig.DefaultChunkName = TEXT("Business");
@@ -209,10 +210,10 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackageIntern
 		// 非小包模式：原有逻辑
 		UHotUpdateChunkManager* ChunkManager = NewObject<UHotUpdateChunkManager>();
 		FHotUpdateChunkAnalysisConfig ChunkConfig;
-		ChunkConfig.ChunkStrategy = Config.ChunkStrategy;
-		ChunkConfig.MaxChunkSizeMB = Config.MaxChunkSizeMB;
-		ChunkConfig.SizeBasedConfig = Config.SizeBasedConfig;
-		ChunkConfig.DirectoryChunkRules = Config.DirectoryChunkRules;
+		ChunkConfig.ChunkStrategy = CurrentConfig.ChunkStrategy;
+		ChunkConfig.MaxChunkSizeMB = CurrentConfig.MaxChunkSizeMB;
+		ChunkConfig.SizeBasedConfig = CurrentConfig.SizeBasedConfig;
+		ChunkConfig.DirectoryChunkRules = CurrentConfig.DirectoryChunkRules;
 		ChunkConfig.bAnalyzeDependencies = true;
 		ChunkConfig.BaseChunkIdStart = 0;
 		ChunkConfig.PatchChunkIdStart = 10000;
@@ -234,19 +235,19 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackageIntern
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("创建了 %d 个 Chunk"), ChunkResult.TotalChunkCount);
 
 	// 3. 确定输出目录
-	FString OutputDir = Config.OutputDirectory.Path;
+	FString OutputDir = CurrentConfig.OutputDirectory.Path;
 	if (OutputDir.IsEmpty())
 	{
 		OutputDir = FPaths::ProjectSavedDir() / TEXT("HotUpdatePackages");
 	}
 
-	FString VersionStr = Config.VersionString;
+	FString VersionStr = CurrentConfig.VersionString;
 	if (VersionStr.IsEmpty())
 	{
 		VersionStr = FDateTime::Now().ToString();
 	}
 
-	FString PlatformStr = HotUpdateUtils::GetPlatformString(Config.Platform);
+	FString PlatformStr = HotUpdateUtils::GetPlatformString(CurrentConfig.Platform);
 	OutputDir = FPaths::Combine(OutputDir, VersionStr, PlatformStr);
 	FPaths::NormalizeDirectoryName(OutputDir);
 
@@ -292,7 +293,7 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackageIntern
 		}
 
 		// 配置 IoStore
-		FHotUpdateIoStoreConfig IoStoreConfig = Config.IoStoreConfig;
+		FHotUpdateIoStoreConfig IoStoreConfig = CurrentConfig.IoStoreConfig;
 		IoStoreConfig.ContainerName = FString::Printf(TEXT("Chunk_%d"), Chunk.ChunkId);
 
 		FString ChunkOutputPath = FPaths::Combine(OutputDir, IoStoreConfig.ContainerName);
@@ -344,7 +345,7 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackageIntern
 
 	FString ManifestPath = FPaths::Combine(OutputDir, TEXT("manifest.json"));
 
-	if (!GenerateManifest(ManifestPath, AssetPaths, AssetDiskPaths, ChunkResult.Chunks, ContainerInfos, Config))
+	if (!GenerateManifest(ManifestPath, AssetPaths, AssetDiskPaths, ChunkResult.Chunks, ContainerInfos))
 	{
 		Result.bSuccess = false;
 		Result.ErrorMessage = TEXT("生成 Manifest 失败");
@@ -362,7 +363,7 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackageIntern
 	FHotUpdateEditorVersionInfo VersionInfo;
 	VersionInfo.VersionString = VersionStr;
 	VersionInfo.PackageKind = EHotUpdatePackageKind::Base;
-	VersionInfo.Platform = Config.Platform;
+	VersionInfo.Platform = CurrentConfig.Platform;
 	VersionInfo.CreatedTime = FDateTime::Now();
 	VersionInfo.ManifestPath = ManifestPath;
 	VersionInfo.AssetCount = AssetPaths.Num();
@@ -392,6 +393,8 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackageIntern
 
 void UHotUpdateBasePackageBuilder::BuildBasePackageAsync(const FHotUpdateBasePackageConfig& Config)
 {
+	CurrentConfig = Config;
+
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("BuildBasePackageAsync 开始调用"));
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("  bIsBuilding: %s"), bIsBuilding ? TEXT("true") : TEXT("false"));
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("  BuildTask.IsValid(): %s"), BuildTask.IsValid() ? TEXT("true") : TEXT("false"));
@@ -417,7 +420,7 @@ void UHotUpdateBasePackageBuilder::BuildBasePackageAsync(const FHotUpdateBasePac
 		}
 	}
 
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始新的基础包构建任务，版本: %s"), *Config.VersionString);
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始新的基础包构建任务，版本: %s"), *CurrentConfig.VersionString);
 
 	bIsBuilding = true;
 	bIsCancelled = false;
@@ -427,7 +430,7 @@ void UHotUpdateBasePackageBuilder::BuildBasePackageAsync(const FHotUpdateBasePac
 	TMap<FString, FString> PreCollectedAssetDiskPaths;
 	FString PreCollectError;
 
-	if (Config.PackageType == EHotUpdatePackageType::FromPackagingSettings)
+	if (CurrentConfig.PackageType == EHotUpdatePackageType::FromPackagingSettings)
 	{
 		FHotUpdatePackagingSettingsResult SettingsResult = FHotUpdatePackagingSettingsHelper::ParsePackagingSettings(true);
 		if (SettingsResult.Errors.Num() > 0)
@@ -439,12 +442,12 @@ void UHotUpdateBasePackageBuilder::BuildBasePackageAsync(const FHotUpdateBasePac
 			PreCollectedAssetPaths = SettingsResult.AssetPaths;
 		}
 	}
-	else if (Config.PackageType == EHotUpdatePackageType::Directory)
+	else if (CurrentConfig.PackageType == EHotUpdatePackageType::Directory)
 	{
 		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 		IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
 
-		for (const FString& DirPath : Config.AssetPaths)
+		for (const FString& DirPath : CurrentConfig.AssetPaths)
 		{
 			FARFilter Filter;
 			Filter.PackagePaths.Add(FName(*DirPath));
@@ -459,12 +462,12 @@ void UHotUpdateBasePackageBuilder::BuildBasePackageAsync(const FHotUpdateBasePac
 			}
 		}
 	}
-	else if (Config.PackageType == EHotUpdatePackageType::Asset)
+	else if (CurrentConfig.PackageType == EHotUpdatePackageType::Asset)
 	{
-		PreCollectedAssetPaths = Config.AssetPaths;
+		PreCollectedAssetPaths = CurrentConfig.AssetPaths;
 	}
 
-	if (Config.bIncludeDependencies && PreCollectedAssetPaths.Num() > 0 && PreCollectError.IsEmpty())
+	if (CurrentConfig.bIncludeDependencies && PreCollectedAssetPaths.Num() > 0 && PreCollectError.IsEmpty())
 	{
 		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 		IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
@@ -496,7 +499,7 @@ void UHotUpdateBasePackageBuilder::BuildBasePackageAsync(const FHotUpdateBasePac
 	TArray<FString> AsyncMinimalEngine;
 	TArray<FString> AsyncMinimalExcluded;
 
-	if (Config.MinimalPackageConfig.bEnableMinimalPackage && PreCollectedAssetPaths.Num() > 0 && PreCollectError.IsEmpty())
+	if (CurrentConfig.MinimalPackageConfig.bEnableMinimalPackage && PreCollectedAssetPaths.Num() > 0 && PreCollectError.IsEmpty())
 	{
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("异步构建: 启用最小包模式，开始三分类过滤"));
 
@@ -505,7 +508,7 @@ void UHotUpdateBasePackageBuilder::BuildBasePackageAsync(const FHotUpdateBasePac
 
 		FHotUpdateAssetFilter::FilterAssetsForMinimalPackage(
 			PreCollectedAssetPaths,
-			Config.MinimalPackageConfig,
+			CurrentConfig.MinimalPackageConfig,
 			AssetRegistry,
 			AsyncMinimalWhitelist,
 			AsyncMinimalEngine,
@@ -534,7 +537,7 @@ void UHotUpdateBasePackageBuilder::BuildBasePackageAsync(const FHotUpdateBasePac
 	MinimalEngineAssets = MoveTemp(AsyncMinimalEngine);
 	MinimalExcludedAssets = MoveTemp(AsyncMinimalExcluded);
 
-	FString CookedPlatformDir = FPaths::ProjectSavedDir() / TEXT("Cooked") / HotUpdateUtils::GetPlatformString(Config.Platform);
+	FString CookedPlatformDir = HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform);
 	for (const FString& AssetPath : PreCollectedAssetPaths)
 	{
 		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath, CookedPlatformDir);
@@ -603,8 +606,10 @@ void UHotUpdateBasePackageBuilder::BuildBasePackageAsync(const FHotUpdateBasePac
 		};
 		FBuildGuard Guard(this);
 
-		FHotUpdateBasePackageResult Result = BuildBasePackageWithPreCollectedAssets(
-			ModifiedConfig, PreCollectedAssetPaths, PreCollectedAssetDiskPaths);
+			CurrentConfig = ModifiedConfig;
+
+			FHotUpdateBasePackageResult Result = BuildBasePackageWithPreCollectedAssets(
+			PreCollectedAssetPaths, PreCollectedAssetDiskPaths);
 		Guard.Result = Result;
 		Guard.bNormalCompletion = true;
 
@@ -643,7 +648,7 @@ bool UHotUpdateBasePackageBuilder::ValidateConfig(const FHotUpdateBasePackageCon
 	return true;
 }
 
-bool UHotUpdateBasePackageBuilder::CompileProject(const FHotUpdateBasePackageConfig& Config)
+bool UHotUpdateBasePackageBuilder::CompileProject()
 {
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始编译项目..."));
 
@@ -654,11 +659,11 @@ bool UHotUpdateBasePackageBuilder::CompileProject(const FHotUpdateBasePackageCon
 		FPaths::Combine(EngineDir, TEXT("Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll")));
 
 	FString ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
-	FString PlatformName = HotUpdateUtils::GetPlatformDirectoryName(Config.Platform);
+	FString PlatformName = HotUpdateUtils::GetPlatformDirectoryName(CurrentConfig.Platform);
 
 	// 构建配置字符串
 	FString BuildConfig;
-	switch (Config.BuildConfiguration)
+	switch (CurrentConfig.BuildConfiguration)
 	{
 	case EHotUpdateBuildConfiguration::DebugGame:
 		BuildConfig = TEXT("DebugGame"); break;
@@ -722,16 +727,22 @@ bool UHotUpdateBasePackageBuilder::CompileProject(const FHotUpdateBasePackageCon
 	return true;
 }
 
-bool UHotUpdateBasePackageBuilder::CookAssets(const FHotUpdateBasePackageConfig& Config)
+bool UHotUpdateBasePackageBuilder::CookAssets()
 {
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始 Cook 资源..."));
 
 	// 使用子进程执行 Cook，避免在当前 Editor 进程中调用 CookCommandlet 导致的平台冲突
 	FString EngineDir = FPaths::EngineDir();
+	#if PLATFORM_WINDOWS
 	FString ExePath = FPaths::ConvertRelativePathToFull(EngineDir / TEXT("Binaries/Win64/UnrealEditor-Cmd.exe"));
+#elif PLATFORM_MAC
+	FString ExePath = FPaths::ConvertRelativePathToFull(EngineDir / TEXT("Binaries/Mac/UnrealEditor-Cmd"));
+#else
+	FString ExePath = FPaths::ConvertRelativePathToFull(EngineDir / TEXT("Binaries/Win64/UnrealEditor-Cmd.exe"));
+#endif
 	FString ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
 
-	FString CookPlatform = HotUpdateUtils::GetPlatformString(Config.Platform);
+	FString CookPlatform = HotUpdateUtils::GetPlatformString(CurrentConfig.Platform);
 	FString Params = FString::Printf(TEXT("\"%s\" -run=cook -targetplatform=%s -NullRHI -unattended -NoSound"),
 		*ProjectPath, *CookPlatform);
 
@@ -781,7 +792,6 @@ bool UHotUpdateBasePackageBuilder::CookAssets(const FHotUpdateBasePackageConfig&
 }
 
 bool UHotUpdateBasePackageBuilder::CollectAssets(
-	const FHotUpdateBasePackageConfig& Config,
 	TArray<FString>& OutAssetPaths,
 	TMap<FString, FString>& OutAssetDiskPaths,
 	FString& OutErrorMessage)
@@ -791,14 +801,14 @@ bool UHotUpdateBasePackageBuilder::CollectAssets(
 
 	TArray<FString> AllAssetPaths;
 
-	switch (Config.PackageType)
+	switch (CurrentConfig.PackageType)
 	{
 	case EHotUpdatePackageType::Asset:
-		AllAssetPaths = Config.AssetPaths;
+		AllAssetPaths = CurrentConfig.AssetPaths;
 		break;
 
 	case EHotUpdatePackageType::Directory:
-		for (const FString& DirPath : Config.AssetPaths)
+		for (const FString& DirPath : CurrentConfig.AssetPaths)
 		{
 			FARFilter Filter;
 			Filter.PackagePaths.Add(FName(*DirPath));
@@ -827,7 +837,7 @@ bool UHotUpdateBasePackageBuilder::CollectAssets(
 		break;
 	}
 
-	if (Config.bIncludeDependencies)
+	if (CurrentConfig.bIncludeDependencies)
 	{
 		TSet<FString> UniquePaths(AllAssetPaths);
 
@@ -852,7 +862,7 @@ bool UHotUpdateBasePackageBuilder::CollectAssets(
 
 
 	// 最小包过滤逻辑
-	if (Config.MinimalPackageConfig.bEnableMinimalPackage)
+	if (CurrentConfig.MinimalPackageConfig.bEnableMinimalPackage)
 	{
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("启用最小包模式，开始三分类过滤"));
 
@@ -862,7 +872,7 @@ bool UHotUpdateBasePackageBuilder::CollectAssets(
 
 		FHotUpdateAssetFilter::FilterAssetsForMinimalPackage(
 			AllAssetPaths,
-			Config.MinimalPackageConfig,
+			CurrentConfig.MinimalPackageConfig,
 			AssetRegistry,
 			WhitelistAssets,
 			EngineAssets,
@@ -887,7 +897,7 @@ bool UHotUpdateBasePackageBuilder::CollectAssets(
 		AllAssetPaths.Append(MinimalExcludedAssets);
 	}
 
-	FString CookedPlatformDir = FPaths::ProjectSavedDir() / TEXT("Cooked") / HotUpdateUtils::GetPlatformString(Config.Platform);
+	FString CookedPlatformDir = HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform);
 	for (const FString& AssetPath : AllAssetPaths)
 	{
 		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath, CookedPlatformDir);
@@ -907,15 +917,14 @@ bool UHotUpdateBasePackageBuilder::GenerateManifest(
 	const TArray<FString>& AssetPaths,
 	const TMap<FString, FString>& AssetDiskPaths,
 	const TArray<FHotUpdateChunkDefinition>& Chunks,
-	const TArray<FHotUpdateContainerInfo>& Containers,
-	const FHotUpdateBasePackageConfig& Config)
+	const TArray<FHotUpdateContainerInfo>& Containers)
 {
 	TSharedPtr<FJsonObject> RootObject = MakeShareable(new FJsonObject);
 
 	TSharedPtr<FJsonObject> VersionObject = MakeShareable(new FJsonObject);
 
 	TArray<FString> VersionParts;
-	Config.VersionString.ParseIntoArray(VersionParts, TEXT("."));
+	CurrentConfig.VersionString.ParseIntoArray(VersionParts, TEXT("."));
 
 	int32 Major = VersionParts.Num() > 0 ? FCString::Atoi(*VersionParts[0]) : 0;
 	int32 Minor = VersionParts.Num() > 1 ? FCString::Atoi(*VersionParts[1]) : 0;
@@ -926,8 +935,8 @@ bool UHotUpdateBasePackageBuilder::GenerateManifest(
 	VersionObject->SetNumberField(TEXT("minor"), Minor);
 	VersionObject->SetNumberField(TEXT("patch"), Patch);
 	VersionObject->SetNumberField(TEXT("buildNumber"), Build);
-	VersionObject->SetStringField(TEXT("versionString"), Config.VersionString);
-	VersionObject->SetStringField(TEXT("platform"), HotUpdateUtils::GetPlatformString(Config.Platform));
+	VersionObject->SetStringField(TEXT("versionString"), CurrentConfig.VersionString);
+	VersionObject->SetStringField(TEXT("platform"), HotUpdateUtils::GetPlatformString(CurrentConfig.Platform));
 	VersionObject->SetNumberField(TEXT("timestamp"), FDateTime::Now().ToUnixTimestamp());
 
 	RootObject->SetObjectField(TEXT("version"), VersionObject);
@@ -970,14 +979,14 @@ bool UHotUpdateBasePackageBuilder::GenerateManifest(
 		if (!DiskPath) continue;
 
 		TSharedPtr<FJsonObject> FileObj = MakeShareable(new FJsonObject);
-		FileObj->SetStringField(TEXT("filePath"), UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(AssetPath));
+		FileObj->SetStringField(TEXT("filePath"), UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(AssetPath, HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform)));
 
 		int64 FileSize = IFileManager::Get().FileSize(**DiskPath);
 		FileObj->SetNumberField(TEXT("fileSize"), FileSize);
 		FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(*DiskPath));
 		FileObj->SetNumberField(TEXT("chunkId"), 0);
 		FileObj->SetNumberField(TEXT("priority"), 0);
-		FileObj->SetBoolField(TEXT("isCompressed"), Config.IoStoreConfig.CompressionFormat != TEXT("None"));
+		FileObj->SetBoolField(TEXT("isCompressed"), CurrentConfig.IoStoreConfig.CompressionFormat != TEXT("None"));
 
 		FilesArray.Add(MakeShareable(new FJsonValueObject(FileObj)));
 	}
@@ -1010,7 +1019,6 @@ void UHotUpdateBasePackageBuilder::UpdateProgress(
 }
 
 FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackageWithPreCollectedAssets(
-	const FHotUpdateBasePackageConfig& Config,
 	const TArray<FString>& PreCollectedAssetPaths,
 	const TMap<FString, FString>& PreCollectedAssetDiskPaths)
 {
@@ -1020,7 +1028,7 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackageWithPr
 
 	// 验证配置
 	FString ErrorMessage;
-	if (!ValidateConfig(Config, ErrorMessage))
+	if (!ValidateConfig(CurrentConfig, ErrorMessage))
 	{
 		UE_LOG(LogHotUpdateEditor, Error, TEXT("配置验证失败: %s"), *ErrorMessage);
 		Result.bSuccess = false;
@@ -1032,10 +1040,10 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackageWithPr
 	bIsCancelled = false;
 
 	// 编译项目：确保 Cook 使用最新的游戏代码
-	if (!Config.bSkipBuild)
+	if (!CurrentConfig.bSkipBuild)
 	{
 		UpdateProgress(TEXT("编译项目"), TEXT(""), 0, 0);
-		if (!CompileProject(Config))
+		if (!CompileProject())
 		{
 			Result.bSuccess = false;
 			Result.ErrorMessage = TEXT("项目编译失败");
@@ -1049,10 +1057,10 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackageWithPr
 	}
 
 	// Cook 资源：确保使用最新的 cooked 文件
-	if (!Config.bSkipCook)
+	if (!CurrentConfig.bSkipCook)
 	{
 		UpdateProgress(TEXT("Cook 资源"), TEXT(""), 0, 0);
-		if (!CookAssets(Config))
+		if (!CookAssets())
 		{
 			Result.bSuccess = false;
 			Result.ErrorMessage = TEXT("Cook 资源失败");
@@ -1073,5 +1081,5 @@ FHotUpdateBasePackageResult UHotUpdateBasePackageBuilder::BuildBasePackageWithPr
 		return Result;
 	}
 
-	return BuildBasePackageInternal(Config, PreCollectedAssetPaths, PreCollectedAssetDiskPaths);
+	return BuildBasePackageInternal( PreCollectedAssetPaths, PreCollectedAssetDiskPaths);
 }

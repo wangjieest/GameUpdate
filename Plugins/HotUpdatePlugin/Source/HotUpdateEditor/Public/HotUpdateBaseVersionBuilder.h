@@ -183,7 +183,7 @@ private:
 	/**
 	 * 写入最小包配置到临时文件，供 UAT 打包时读取
 	 */
-	void WriteMinimalPackageConfig(const FHotUpdateMinimalPackageConfig& Config);
+	void WriteMinimalPackageConfig();
 
 	/**
 	 * 执行 UAT 打包命令
@@ -193,17 +193,17 @@ private:
 	/**
 	 * 生成 UAT 命令行
 	 */
-	FString GenerateUATCommand(const FHotUpdateBaseVersionBuildConfig& Config);
+	FString GenerateUATCommand();
 
 	/**
 	 * 打包完成后保存资源Hash清单
 	 */
-	bool SaveResourceHashesInGameThread(const FString& VersionString, EHotUpdatePlatform Platform);
+	bool SaveResourceHashesInGameThread();
 
 	/**
 	 * 检查打包输出是否存在
 	 */
-	bool CheckBuildOutput(const FString& OutputDir, EHotUpdatePlatform Platform, FString& OutExecutablePath);
+	bool CheckBuildOutput(const FString& OutputDir, FString& OutExecutablePath);
 
 	/**
 	 * 更新进度

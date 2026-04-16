@@ -30,6 +30,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 
 	// 验证配置
 	FString ErrorMessage;
+	CurrentConfig = Config;
 	if (!ValidateConfig(Config, ErrorMessage))
 	{
 		UE_LOG(LogHotUpdateEditor, Error, TEXT("配置验证失败: %s"), *ErrorMessage);
@@ -44,10 +45,10 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	bIsCancelled = false;
 
 	// 编译项目：确保 Cook 使用最新的游戏代码
-	if (!Config.bSkipBuild)
+	if (!CurrentConfig.bSkipBuild)
 	{
 		UpdateProgress(TEXT("编译项目"), TEXT(""), 0, 0);
-		if (!CompileProject(Config))
+		if (!CompileProject())
 		{
 			Result.bSuccess = false;
 			Result.ErrorMessage = TEXT("项目编译失败");
@@ -61,10 +62,10 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	}
 
 	// Cook 资源：确保使用最新的 cooked 文件
-	if (!Config.bSkipCook)
+	if (!CurrentConfig.bSkipCook)
 	{
 		UpdateProgress(TEXT("Cook 资源"), TEXT(""), 0, 0);
-		if (!CookAssets(Config))
+		if (!CookAssets())
 		{
 			Result.bSuccess = false;
 			Result.ErrorMessage = TEXT("Cook 资源失败");
@@ -83,7 +84,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	TMap<FString, FString> BaseAssetHashes;
 	TMap<FString, int64> BaseAssetSizes;
 
-	if (!LoadBaseManifest(Config.BaseManifestPath.FilePath, BaseAssetHashes, BaseAssetSizes))
+	if (!LoadBaseManifest(CurrentConfig.BaseManifestPath.FilePath, BaseAssetHashes, BaseAssetSizes))
 	{
 		Result.bSuccess = false;
 		Result.ErrorMessage = TEXT("无法加载基础版本 Manifest");
@@ -94,10 +95,10 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("加载了基础版本 %d 个资源"), BaseAssetHashes.Num());
 
 	// 从 manifest 中读取实际版本号作为 BaseVersion
-	FString ActualBaseVersion = Config.BaseVersion;
+	FString ActualBaseVersion = CurrentConfig.BaseVersion;
 	{
 		FString ManifestContent;
-		if (FFileHelper::LoadFileToString(ManifestContent, *Config.BaseManifestPath.FilePath))
+		if (FFileHelper::LoadFileToString(ManifestContent, *CurrentConfig.BaseManifestPath.FilePath))
 		{
 			TSharedPtr<FJsonObject> ManifestObj;
 			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ManifestContent);
@@ -132,7 +133,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	TArray<FString> CurrentAssetPaths;
 	TMap<FString, FString> CurrentAssetDiskPaths;
 
-	if (!CollectAssets(Config, CurrentAssetPaths, CurrentAssetDiskPaths, ErrorMessage))
+	if (!CollectAssets( CurrentAssetPaths, CurrentAssetDiskPaths, ErrorMessage))
 	{
 		Result.bSuccess = false;
 		Result.ErrorMessage = ErrorMessage;
@@ -182,8 +183,8 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 		return Result;
 	}
 
-	DiffReport.BaseVersion = Config.BaseVersion;
-	DiffReport.TargetVersion = Config.PatchVersion;
+	DiffReport.BaseVersion = CurrentConfig.BaseVersion;
+	DiffReport.TargetVersion = CurrentConfig.PatchVersion;
 
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("差异: 新增 %d, 修改 %d, 删除 %d"),
 		DiffReport.AddedAssets.Num(), DiffReport.ModifiedAssets.Num(), DiffReport.DeletedAssets.Num());
@@ -193,7 +194,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	TMap<FString, FString> ChangedAssetDiskPaths;
 
 	// Cooked 平台目录，用于解析运行时需要的 cooked 格式文件路径
-		FString CookedPlatformDir = FPaths::ProjectSavedDir() / TEXT("Cooked") / HotUpdateUtils::GetPlatformString(Config.Platform);
+		FString CookedPlatformDir = HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform);
 	// 添加新增资源的磁盘路径
 	for (const FHotUpdateAssetDiff& AddedDiff : DiffReport.AddedAssets)
 	{
@@ -228,7 +229,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	// 全量热更新模式：即使没有变更，也需要复制基础容器
 	// 增量模式：没有变更则提前返回
 	bool bHasChanges = ChangedAssets.Num() > 0;
-	bool bIsFullHotUpdate = Config.bIncludeBaseContainers && !Config.BaseContainerDirectory.Path.IsEmpty();
+	bool bIsFullHotUpdate = CurrentConfig.bIncludeBaseContainers && !CurrentConfig.BaseContainerDirectory.Path.IsEmpty();
 
 	if (!bHasChanges && !bIsFullHotUpdate)
 	{
@@ -240,20 +241,20 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	}
 
 	// 5. 确定输出目录
-	FString OutputDir = Config.OutputDirectory.Path;
+	FString OutputDir = CurrentConfig.OutputDirectory.Path;
 	if (OutputDir.IsEmpty())
 	{
 		OutputDir = FPaths::ProjectSavedDir() / TEXT("HotUpdatePatches");
 	}
 
-	FString PlatformStr = HotUpdateUtils::GetPlatformString(Config.Platform);
-	OutputDir = FPaths::Combine(OutputDir, Config.PatchVersion, PlatformStr);
+	FString PlatformStr = HotUpdateUtils::GetPlatformString(CurrentConfig.Platform);
+	OutputDir = FPaths::Combine(OutputDir, CurrentConfig.PatchVersion, PlatformStr);
 	FPaths::NormalizeDirectoryName(OutputDir);
 
 	IPlatformFile::GetPlatformPhysical().CreateDirectoryTree(*OutputDir);
 
 	Result.OutputDirectory = OutputDir;
-	Result.PatchVersion = Config.PatchVersion;
+	Result.PatchVersion = CurrentConfig.PatchVersion;
 	Result.BaseVersion = ActualBaseVersion;
 	Result.DiffReport = DiffReport;
 	Result.ChangedAssetCount = ChangedAssets.Num();
@@ -272,12 +273,12 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	{
 		UHotUpdateIoStoreBuilder* IoStoreBuilder = NewObject<UHotUpdateIoStoreBuilder>();
 
-		FHotUpdateIoStoreConfig IoStoreConfig = Config.IoStoreConfig;
+		FHotUpdateIoStoreConfig IoStoreConfig = CurrentConfig.IoStoreConfig;
 		IoStoreConfig.bUseIoStore = false;  // Patch 强制使用 .pak 格式
 		// UE5 标准补丁命名格式：{项目名}-{平台}_{PatchIndex}_P
 			// 补丁命名格式：{项目名}_P_{版本号}，如 MyProject_P_1.5.2
 			// _P 后缀让引擎运行时自动提升 PakOrder，版本号保证多补丁不重名
-			IoStoreConfig.ContainerName = FString::Printf(TEXT("Patch_%s_P"), *Config.PatchVersion);
+			IoStoreConfig.ContainerName = FString::Printf(TEXT("Patch_%s_P"), *CurrentConfig.PatchVersion);
 
 		FString PaksDir = FPaths::Combine(OutputDir, TEXT("Paks"));
 		IPlatformFile::GetPlatformPhysical().CreateDirectoryTree(*PaksDir);
@@ -323,11 +324,11 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	TMap<FString, int64> PreviousPatchFilesSize;
 	TArray<FString> PatchVersionChain;
 
-	if (Config.bEnableChainPatch && Config.PreviousPatchManifestPaths.Num() > 0)
+	if (CurrentConfig.bEnableChainPatch && CurrentConfig.PreviousPatchManifestPaths.Num() > 0)
 	{
-		UpdateProgress(TEXT("加载之前的 Patch"), TEXT(""), 0, Config.PreviousPatchManifestPaths.Num());
+		UpdateProgress(TEXT("加载之前的 Patch"), TEXT(""), 0, CurrentConfig.PreviousPatchManifestPaths.Num());
 
-		for (int32 i = 0; i < Config.PreviousPatchManifestPaths.Num(); i++)
+		for (int32 i = 0; i < CurrentConfig.PreviousPatchManifestPaths.Num(); i++)
 		{
 			if (bIsCancelled)
 			{
@@ -337,7 +338,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 				return Result;
 			}
 
-			const FString& PrevManifestPath = Config.PreviousPatchManifestPaths[i].FilePath;
+			const FString& PrevManifestPath = CurrentConfig.PreviousPatchManifestPaths[i].FilePath;
 
 			TArray<FHotUpdateContainerInfo> PrevContainers;
 			TMap<FString, FString> PrevFilesHash;
@@ -363,7 +364,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 				UE_LOG(LogHotUpdateEditor, Warning, TEXT("链式 Patch: 无法加载之前的 Manifest: %s"), *PrevManifestPath);
 			}
 
-			UpdateProgress(TEXT("加载之前的 Patch"), PrevManifestPath, i + 1, Config.PreviousPatchManifestPaths.Num());
+			UpdateProgress(TEXT("加载之前的 Patch"), PrevManifestPath, i + 1, CurrentConfig.PreviousPatchManifestPaths.Num());
 		}
 
 		Result.bIsChainPatch = true;
@@ -401,7 +402,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 			{
 				// 查找源目录
 				FString SourceBaseDir;
-				for (const FFilePath& PrevManifestPath : Config.PreviousPatchManifestPaths)
+				for (const FFilePath& PrevManifestPath : CurrentConfig.PreviousPatchManifestPaths)
 				{
 					if (PrevManifestPath.FilePath.Contains(PrevVersion))
 					{
@@ -412,7 +413,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 
 				if (SourceBaseDir.IsEmpty())
 				{
-					SourceBaseDir = FPaths::Combine(Config.OutputDirectory.Path, PrevVersion, HotUpdateUtils::GetPlatformString(Config.Platform));
+					SourceBaseDir = FPaths::Combine(CurrentConfig.OutputDirectory.Path, PrevVersion, HotUpdateUtils::GetPlatformString(CurrentConfig.Platform));
 				}
 
 				SourceUtocPath = FPaths::Combine(SourceBaseDir, PrevContainer.UtocPath);
@@ -468,9 +469,9 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 		TMap<FString, FString> BaseContainerFilesHash;
 		TMap<FString, int64> BaseContainerFilesSize;
 
-		if (Config.bIncludeBaseContainers && !Config.BaseContainerDirectory.Path.IsEmpty())
+		if (CurrentConfig.bIncludeBaseContainers && !CurrentConfig.BaseContainerDirectory.Path.IsEmpty())
 		{
-			FString BaseContainerDir = Config.BaseContainerDirectory.Path;
+			FString BaseContainerDir = CurrentConfig.BaseContainerDirectory.Path;
 			FPaths::NormalizeDirectoryName(BaseContainerDir);
 
 			UE_LOG(LogHotUpdateEditor, Log, TEXT("全量热更新: 从目录加载基础版本容器文件: %s"), *BaseContainerDir);
@@ -490,7 +491,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 		// 6.7 从基础版本 Manifest 解析容器信息（写入 manifest 供客户端下载）
 	{
 		FString BaseManifestJson;
-		if (FFileHelper::LoadFileToString(BaseManifestJson, *Config.BaseManifestPath.FilePath))
+		if (FFileHelper::LoadFileToString(BaseManifestJson, *CurrentConfig.BaseManifestPath.FilePath))
 		{
 			TSharedPtr<FJsonObject> BaseManifestObj;
 			TSharedRef<TJsonReader<>> BaseReader = TJsonReaderFactory<>::Create(BaseManifestJson);
@@ -541,7 +542,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 
 						Info.ContainerType = EHotUpdateContainerType::Patch;
 						Info.ChunkId = (int32)ContainerObj->GetNumberField(TEXT("chunkId"));
-						// 优先使用 manifest 中的 version 字段，否则使用 Config.BaseVersion
+						// 优先使用 manifest 中的 version 字段，否则使用 CurrentConfig.BaseVersion
 						if (ContainerObj->HasField(TEXT("version")))
 						{
 							Info.Version = ContainerObj->GetStringField(TEXT("version"));
@@ -577,13 +578,12 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	// 7. 生成 Manifest
 	UpdateProgress(TEXT("生成 Manifest"), TEXT(""), 0, 0);
 
-		// 使用实际 BaseVersion 创建可变 Config 副本
-		FHotUpdatePatchPackageConfig ManifestConfig = Config;
-		ManifestConfig.BaseVersion = ActualBaseVersion;
+		// 更新 CurrentConfig 中的 BaseVersion
+			CurrentConfig.BaseVersion = ActualBaseVersion;
 
 	FString ManifestPath = FPaths::Combine(OutputDir, TEXT("manifest.json"));
 
-	if (!GenerateManifest(ManifestPath, Result.PatchUtocPath, Result.PatchUcasPath, AssetsToPackage, ChangedAssetDiskPaths, BaseAssetHashes, BaseAssetSizes, DiffReport, ManifestConfig, ChainPatchContainers, PreviousPatchFilesHash, PreviousPatchFilesSize, PatchVersionChain, BaseContainers, BaseContainerFilesHash, BaseContainerFilesSize))
+	if (!GenerateManifest(ManifestPath, Result.PatchUtocPath, Result.PatchUcasPath, AssetsToPackage, ChangedAssetDiskPaths, BaseAssetHashes, BaseAssetSizes, DiffReport, ChainPatchContainers, PreviousPatchFilesHash, PreviousPatchFilesSize, PatchVersionChain, BaseContainers, BaseContainerFilesHash, BaseContainerFilesSize))
 	{
 		Result.bSuccess = false;
 		Result.ErrorMessage = TEXT("生成 Manifest 失败");
@@ -599,10 +599,10 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	UHotUpdateVersionManager* VersionManager = NewObject<UHotUpdateVersionManager>();
 
 	FHotUpdateEditorVersionInfo VersionInfo;
-	VersionInfo.VersionString = Config.PatchVersion;
+	VersionInfo.VersionString = CurrentConfig.PatchVersion;
 	VersionInfo.PackageKind = EHotUpdatePackageKind::Patch;
-	VersionInfo.BaseVersion = Config.BaseVersion;
-	VersionInfo.Platform = Config.Platform;
+	VersionInfo.BaseVersion = CurrentConfig.BaseVersion;
+	VersionInfo.Platform = CurrentConfig.Platform;
 	VersionInfo.CreatedTime = FDateTime::Now();
 	VersionInfo.ManifestPath = ManifestPath;
 	VersionInfo.UtocPath = Result.PatchUtocPath;
@@ -654,7 +654,7 @@ void UHotUpdatePatchPackageBuilder::BuildPatchPackageAsync(const FHotUpdatePatch
 		}
 	}
 
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始新的更新包构建任务，版本: %s，基础版本: %s"), *Config.PatchVersion, *Config.BaseVersion);
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始新的更新包构建任务，版本: %s，基础版本: %s"), *CurrentConfig.PatchVersion, *CurrentConfig.BaseVersion);
 
 	bIsBuilding = true;
 	bIsCancelled = false;
@@ -663,7 +663,7 @@ void UHotUpdatePatchPackageBuilder::BuildPatchPackageAsync(const FHotUpdatePatch
 	// 因为 AssetRegistry->GetAssets() 必须在游戏线程执行
 	FHotUpdatePatchPackageConfig ConfigForThread = Config;
 
-	if (Config.PackageType == EHotUpdatePackageType::FromPackagingSettings)
+	if (CurrentConfig.PackageType == EHotUpdatePackageType::FromPackagingSettings)
 	{
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("在游戏线程预收集打包设置中的资源..."));
 
@@ -814,13 +814,14 @@ void UHotUpdatePatchPackageBuilder::BuildPatchPackageAsync(const FHotUpdatePatch
 
 FHotUpdateDiffReport UHotUpdatePatchPackageBuilder::PreviewDiff(const FHotUpdatePatchPackageConfig& Config)
 {
+	CurrentConfig = Config;
 	FHotUpdateDiffReport Report;
 
 	// 加载基础版本
 	TMap<FString, FString> BaseAssetHashes;
 	TMap<FString, int64> BaseAssetSizes;
 
-	if (!LoadBaseManifest(Config.BaseManifestPath.FilePath, BaseAssetHashes, BaseAssetSizes))
+	if (!LoadBaseManifest(CurrentConfig.BaseManifestPath.FilePath, BaseAssetHashes, BaseAssetSizes))
 	{
 		return Report;
 	}
@@ -830,7 +831,7 @@ FHotUpdateDiffReport UHotUpdatePatchPackageBuilder::PreviewDiff(const FHotUpdate
 	TMap<FString, FString> CurrentAssetDiskPaths;
 	FString ErrorMessage;
 
-	if (!CollectAssets(Config, CurrentAssetPaths, CurrentAssetDiskPaths, ErrorMessage))
+	if (!CollectAssets( CurrentAssetPaths, CurrentAssetDiskPaths, ErrorMessage))
 	{
 		return Report;
 	}
@@ -850,8 +851,8 @@ FHotUpdateDiffReport UHotUpdatePatchPackageBuilder::PreviewDiff(const FHotUpdate
 	TArray<FString> ChangedAssets;
 	ComputeDiff(CurrentAssetPaths, CurrentAssetHashes, BaseAssetHashes, ChangedAssets, Report);
 
-	Report.BaseVersion = Config.BaseVersion;
-	Report.TargetVersion = Config.PatchVersion;
+	Report.BaseVersion = CurrentConfig.BaseVersion;
+	Report.TargetVersion = CurrentConfig.PatchVersion;
 
 	return Report;
 }
@@ -897,7 +898,6 @@ bool UHotUpdatePatchPackageBuilder::ValidateConfig(const FHotUpdatePatchPackageC
 }
 
 bool UHotUpdatePatchPackageBuilder::CollectAssets(
-	const FHotUpdatePatchPackageConfig& Config,
 	TArray<FString>& OutAssetPaths,
 	TMap<FString, FString>& OutAssetDiskPaths,
 	FString& OutErrorMessage)
@@ -907,14 +907,14 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(
 
 	TArray<FString> AllAssetPaths;
 
-	switch (Config.PackageType)
+	switch (CurrentConfig.PackageType)
 	{
 	case EHotUpdatePackageType::Asset:
-		AllAssetPaths = Config.AssetPaths;
+		AllAssetPaths = CurrentConfig.AssetPaths;
 		break;
 
 	case EHotUpdatePackageType::Directory:
-		for (const FString& DirPath : Config.AssetPaths)
+		for (const FString& DirPath : CurrentConfig.AssetPaths)
 		{
 			FARFilter Filter;
 			Filter.PackagePaths.Add(FName(*DirPath));
@@ -944,7 +944,7 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(
 	}
 
 	// 收集依赖
-	if (Config.bIncludeDependencies)
+	if (CurrentConfig.bIncludeDependencies)
 	{
 		TSet<FString> UniquePaths(AllAssetPaths);
 
@@ -972,7 +972,7 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(
 	
 	// 获取磁盘路径
 	// 使用 Cooked 目录解析磁盘路径，文件不存在则自动过滤（包括 OFPA 等已合入 .umap 的资源）
-	FString CookedPlatformDir = FPaths::ProjectSavedDir() / TEXT("Cooked") / HotUpdateUtils::GetPlatformString(Config.Platform);
+	FString CookedPlatformDir = HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform);
 	for (const FString& AssetPath : AllAssetPaths)
 	{
 		FString DiskPath = GetAssetDiskPath(AssetPath, CookedPlatformDir);
@@ -1143,7 +1143,6 @@ bool UHotUpdatePatchPackageBuilder::GenerateManifest(
 	const TMap<FString, FString>& BaseAssetHashes,
 	const TMap<FString, int64>& BaseAssetSizes,
 	const FHotUpdateDiffReport& DiffReport,
-	const FHotUpdatePatchPackageConfig& Config,
 	const TArray<FHotUpdateContainerInfo>& ChainPatchContainers,
 	const TMap<FString, FString>& PreviousPatchFilesHash,
 	const TMap<FString, int64>& PreviousPatchFilesSize,
@@ -1164,24 +1163,24 @@ bool UHotUpdatePatchPackageBuilder::GenerateManifest(
 	TSharedPtr<FJsonObject> VersionInfo = MakeShareable(new FJsonObject);
 
 	TArray<FString> VersionParts;
-	Config.PatchVersion.ParseIntoArray(VersionParts, TEXT("."));
+	CurrentConfig.PatchVersion.ParseIntoArray(VersionParts, TEXT("."));
 
 	int32 Major = VersionParts.Num() > 0 ? FCString::Atoi(*VersionParts[0]) : 0;
 	int32 Minor = VersionParts.Num() > 1 ? FCString::Atoi(*VersionParts[1]) : 0;
 	int32 Patch = VersionParts.Num() > 2 ? FCString::Atoi(*VersionParts[2]) : 0;
 	int32 Build = VersionParts.Num() > 3 ? FCString::Atoi(*VersionParts[3]) : 0;
 
-	VersionInfo->SetStringField(TEXT("version"), Config.PatchVersion);
-	VersionInfo->SetStringField(TEXT("platform"), HotUpdateUtils::GetPlatformString(Config.Platform));
+	VersionInfo->SetStringField(TEXT("version"), CurrentConfig.PatchVersion);
+	VersionInfo->SetStringField(TEXT("platform"), HotUpdateUtils::GetPlatformString(CurrentConfig.Platform));
 	VersionInfo->SetNumberField(TEXT("timestamp"), FDateTime::Now().ToUnixTimestamp());
 
 	RootObject->SetObjectField(TEXT("version"), VersionInfo);
 
 	// 基础版本
-	RootObject->SetStringField(TEXT("baseVersion"), Config.BaseVersion);
+	RootObject->SetStringField(TEXT("baseVersion"), CurrentConfig.BaseVersion);
 
 	// Patch 版本链（链式模式）
-	if (Config.bEnableChainPatch && PatchVersionChain.Num() > 0)
+	if (CurrentConfig.bEnableChainPatch && PatchVersionChain.Num() > 0)
 	{
 		TArray<TSharedPtr<FJsonValue>> PatchChainArray;
 		for (const FString& PrevVersion : PatchVersionChain)
@@ -1189,7 +1188,7 @@ bool UHotUpdatePatchPackageBuilder::GenerateManifest(
 			PatchChainArray.Add(MakeShareable(new FJsonValueString(PrevVersion)));
 		}
 		// 添加当前版本
-		PatchChainArray.Add(MakeShareable(new FJsonValueString(Config.PatchVersion)));
+		PatchChainArray.Add(MakeShareable(new FJsonValueString(CurrentConfig.PatchVersion)));
 		RootObject->SetArrayField(TEXT("patchChain"), PatchChainArray);
 	}
 
@@ -1295,7 +1294,7 @@ bool UHotUpdatePatchPackageBuilder::GenerateManifest(
 	{
 		TSharedPtr<FJsonObject> PatchContainerObj = MakeShareable(new FJsonObject);
 
-			FString ContainerName = FString::Printf(TEXT("Patch_%s_P"), *Config.PatchVersion);
+			FString ContainerName = FString::Printf(TEXT("Patch_%s_P"), *CurrentConfig.PatchVersion);
 		PatchContainerObj->SetStringField(TEXT("containerName"), ContainerName);
 
 		// .utoc 文件信息
@@ -1331,7 +1330,7 @@ bool UHotUpdatePatchPackageBuilder::GenerateManifest(
 		}
 
 		PatchContainerObj->SetNumberField(TEXT("chunkId"), CurrentChunkId);
-			PatchContainerObj->SetStringField(TEXT("version"), Config.PatchVersion);
+			PatchContainerObj->SetStringField(TEXT("version"), CurrentConfig.PatchVersion);
 
 		ContainersArray.Add(MakeShareable(new FJsonValueObject(PatchContainerObj)));
 	}
@@ -1359,16 +1358,16 @@ bool UHotUpdatePatchPackageBuilder::GenerateManifest(
 	FileManifestObj->SetNumberField(TEXT("manifestVersion"), 4);
 	FileManifestObj->SetNumberField(TEXT("packageKind"), static_cast<int32>(EHotUpdatePackageKind::Patch));
 	FileManifestObj->SetObjectField(TEXT("version"), VersionInfo);
-	FileManifestObj->SetStringField(TEXT("baseVersion"), Config.BaseVersion);
+	FileManifestObj->SetStringField(TEXT("baseVersion"), CurrentConfig.BaseVersion);
 
-	if (Config.bEnableChainPatch && PatchVersionChain.Num() > 0)
+	if (CurrentConfig.bEnableChainPatch && PatchVersionChain.Num() > 0)
 	{
 		TArray<TSharedPtr<FJsonValue>> PatchChainArray;
 		for (const FString& PrevVersion : PatchVersionChain)
 		{
 			PatchChainArray.Add(MakeShareable(new FJsonValueString(PrevVersion)));
 		}
-		PatchChainArray.Add(MakeShareable(new FJsonValueString(Config.PatchVersion)));
+		PatchChainArray.Add(MakeShareable(new FJsonValueString(CurrentConfig.PatchVersion)));
 		FileManifestObj->SetArrayField(TEXT("patchChain"), PatchChainArray);
 	}
 
@@ -1392,7 +1391,7 @@ bool UHotUpdatePatchPackageBuilder::GenerateManifest(
 	for (const FString& AssetPath : AllAssetPaths)
 	{
 		TSharedPtr<FJsonObject> FileObj = MakeShareable(new FJsonObject);
-		FileObj->SetStringField(TEXT("filePath"), ConvertAssetPathToFileName(AssetPath));
+		FileObj->SetStringField(TEXT("filePath"), ConvertAssetPathToFileName(AssetPath, HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform)));
 
 		// 检查文件来源（优先级：当前 patch > 之前 patch > 基础版本容器 > base manifest）
 		bool bIsCurrentPatch = ChangedAssetDiskPaths.Contains(AssetPath);
@@ -1469,7 +1468,7 @@ bool UHotUpdatePatchPackageBuilder::GenerateManifest(
 		}
 
 		FileObj->SetNumberField(TEXT("priority"), 0);
-		FileObj->SetBoolField(TEXT("isCompressed"), Config.IoStoreConfig.CompressionFormat != TEXT("None"));
+		FileObj->SetBoolField(TEXT("isCompressed"), CurrentConfig.IoStoreConfig.CompressionFormat != TEXT("None"));
 
 		FilesArray.Add(MakeShareable(new FJsonValueObject(FileObj)));
 	}
@@ -1513,7 +1512,7 @@ void UHotUpdatePatchPackageBuilder::UpdateProgress(
 	});
 }
 
-FString UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(const FString& AssetPath)
+FString UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(const FString& AssetPath, const FString& CookedPlatformDir)
 {
 	FString FileName = AssetPath;
 
@@ -1524,7 +1523,7 @@ FString UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(const FString&
 	}
 
 	// 使用实际磁盘文件来确定后缀
-	FString DiskPath = GetAssetDiskPath(AssetPath, TEXT(""));
+	FString DiskPath = GetAssetDiskPath(AssetPath, CookedPlatformDir);
 	if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 	{
 		// 从磁盘路径获取实际扩展名
@@ -1554,7 +1553,7 @@ FString UHotUpdatePatchPackageBuilder::FileNameToAssetPath(const FString& FileNa
 	// 移除已知的资源文件扩展名
 	if (AssetPath.EndsWith(TEXT(".uasset")))
 	{
-		AssetPath.LeftChopInline(8); // strlen(".uasset")
+		AssetPath.LeftChopInline(7); // strlen(".uasset") = 7
 	}
 	else if (AssetPath.EndsWith(TEXT(".umap")))
 	{
@@ -1566,60 +1565,136 @@ FString UHotUpdatePatchPackageBuilder::FileNameToAssetPath(const FString& FileNa
 
 FString UHotUpdatePatchPackageBuilder::GetAssetDiskPath(const FString& AssetPath, const FString& CookedPlatformDir)
 {
-	// 从 Cooked 目录解析（运行时需要 cooked 格式的 .uasset + .uexp）
-	if (!CookedPlatformDir.IsEmpty())
+	if (CookedPlatformDir.IsEmpty())
 	{
-		// 使用 FPackageName 的 mount point 机制解析路径，支持 /Game/、/Engine/、插件路径等所有类型
-		// FPackageName 返回的路径基于项目根目录（如 ../../../GameUpdate/Content/... 或 ../../../Engine/Content/...）
-		// 需要将其映射到 Cooked 目录结构
-		FString ResolvedPath;
-		if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, ResolvedPath, TEXT("")))
-		{
-			return TEXT("");
-		}
-
-		// ResolvedPath 格式: ../../../{ProjectName}/Content/X 或 ../../../Engine/Content/X 或 ../../../Engine/Plugins/...
-		// 去掉 "../../../" 前缀，得到相对于项目根目录的路径
-		FString RelativePath = ResolvedPath;
-		if (RelativePath.StartsWith(TEXT("../../../")))
-		{
-			RelativePath = RelativePath.Mid(9); // 去掉 "../../../"
-		}
-
-		// 先尝试 .umap（地图）
-		FString CookedMapPath = FPaths::Combine(CookedPlatformDir, RelativePath + TEXT(".umap"));
-		if (FPaths::FileExists(*CookedMapPath))
-		{
-			return CookedMapPath;
-		}
-
-		// 再尝试 .uasset（普通资源）
-		FString CookedAssetPath = FPaths::Combine(CookedPlatformDir, RelativePath + TEXT(".uasset"));
-		if (FPaths::FileExists(*CookedAssetPath))
-		{
-			return CookedAssetPath;
-		}
-
-		// Cook 目录中不存在则返回空，不 fallback 到源码目录
-		// OFPA 等已合入 .umap 的资源不会有独立 cooked 文件，自然被过滤
+		UE_LOG(LogHotUpdateEditor, Error, TEXT("GetAssetDiskPath: CookedPlatformDir 不能为空，必须指定 Cooked 平台目录"));
 		return TEXT("");
 	}
 
-	// CookedPlatformDir 为空时，回退到 FPackageName 解析（兼容旧调用方式）
-	FString DiskPath = FPackageName::LongPackageNameToFilename(
-		AssetPath, FPackageName::GetAssetPackageExtension());
+	FString ResolvedCookedDir = CookedPlatformDir;
 
-	if (!FPaths::FileExists(*DiskPath))
+	// 使用 FPackageName 的 mount point 机制解析路径，支持 /Game/、/Engine/、插件路径等所有类型
+	// FPackageName 返回的路径基于项目根目录（如 ../../../GameUpdate/Content/... 或 ../../../Engine/Content/...）
+	// 需要将其映射到 Cooked 目录结构
+	FString ResolvedPath;
+	if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, ResolvedPath, TEXT("")))
 	{
-		FString MapDiskPath = FPackageName::LongPackageNameToFilename(
-			AssetPath, FPackageName::GetMapPackageExtension());
-		if (FPaths::FileExists(*MapDiskPath))
+		return TEXT("");
+	}
+
+	// ResolvedPath 可能是绝对路径或相对路径：
+	// UE5.7+ 返回绝对路径: E:/Project/Content/X 或 E:/Engine/Content/X
+	// 旧版返回相对路径: ../../../{ProjectName}/Content/X 或 ../../../Engine/Content/X
+	// 需要统一转换为 Cooked 目录结构下的相对路径:
+	//   /Game/  -> {ProjectName}/Content/X
+	//   /Engine/ -> Engine/Content/X
+	//   /{Plugin}/ -> {Plugin}/Content/X
+	FString RelativePath;
+
+	if (ResolvedPath.StartsWith(TEXT("../../../")))
+	{
+		// 旧版相对路径格式: ../../../{ProjectName}/Content/X
+		RelativePath = ResolvedPath.Mid(9); // 去掉 "../../../"
+	}
+	else
+	{
+		// 绝对路径格式: 需要根据 mount point 提取相对部分
+		// /Game/ 的绝对路径: {ProjectDir}/Content/X -> 需要提取 {ProjectName}/Content/X
+		// /Engine/ 的绝对路径: {EngineDir}/Content/X -> 需要提取 Engine/Content/X
+
+		if (AssetPath.StartsWith(TEXT("/Game/")))
 		{
-			return MapDiskPath;
+			// 项目资源: 绝对路径 = {ProjectDir}/Content/...
+			// Cooked 目录结构: {CookedPlatformDir}/{ProjectName}/Content/...
+			// 需要提取 Content/ 之后的部分，然后拼接 {ProjectName}/Content/...
+			FString ProjectContentDir = FPaths::ProjectContentDir();
+			FString NormalizedProjectDir = ProjectContentDir;
+			FPaths::NormalizeDirectoryName(NormalizedProjectDir);
+
+			if (ResolvedPath.StartsWith(NormalizedProjectDir))
+			{
+				// 提取 Content/ 之后的部分
+				FString Suffix = ResolvedPath.RightChop(NormalizedProjectDir.Len());
+				// 拼接: {ProjectName}/Content/{Suffix}
+				RelativePath = FString(FApp::GetProjectName()) / TEXT("Content") + Suffix;
+			}
+			else
+			{
+				// 回退: 尝试从 /Game/ 替换
+				RelativePath = AssetPath.Mid(1) / TEXT("");  // /Game/X -> Game/X
+				// 但这不对，因为 Cooked 目录结构是 GameUpdate/Content/X，不是 Game/X
+				// 使用更可靠的方式
+				FString AssetPathWithoutGame = AssetPath.Mid(5); // 去掉 /Game
+				RelativePath = FString(FApp::GetProjectName()) / TEXT("Content") + AssetPathWithoutGame;
+			}
+		}
+		else if (AssetPath.StartsWith(TEXT("/Engine/")))
+		{
+			// 引擎资源: 绝对路径 = {EngineDir}/Content/...
+			FString EngineContentDir = FPaths::EngineContentDir();
+			FString NormalizedEngineDir = EngineContentDir;
+			FPaths::NormalizeDirectoryName(NormalizedEngineDir);
+
+			if (ResolvedPath.StartsWith(NormalizedEngineDir))
+			{
+				FString Suffix = ResolvedPath.RightChop(NormalizedEngineDir.Len());
+				RelativePath = TEXT("Engine/Content") + Suffix;
+			}
+			else
+			{
+				FString AssetPathWithoutEngine = AssetPath.Mid(8); // 去掉 /Engine/
+				RelativePath = TEXT("Engine/Content") / AssetPathWithoutEngine;
+			}
+		}
+		else
+		{
+			// 插件等其他路径: 使用 TryConvert 的结果
+			// 尝试从项目根目录提取相对路径
+			FString ProjectDir = FPaths::ProjectDir();
+			FString NormalizedProjectDir = ProjectDir;
+			FPaths::NormalizeDirectoryName(NormalizedProjectDir);
+
+			if (ResolvedPath.StartsWith(NormalizedProjectDir))
+			{
+				RelativePath = ResolvedPath.RightChop(NormalizedProjectDir.Len());
+			}
+			else
+			{
+				FString EngineDir = FPaths::EngineDir();
+				FString NormalizedEngineDir2 = EngineDir;
+				FPaths::NormalizeDirectoryName(NormalizedEngineDir2);
+
+				if (ResolvedPath.StartsWith(NormalizedEngineDir2))
+				{
+					RelativePath = ResolvedPath.RightChop(NormalizedEngineDir2.Len());
+				}
+				else
+				{
+					// 无法解析，返回空
+					UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetAssetDiskPath: Cannot resolve path for %s (ResolvedPath=%s)"), *AssetPath, *ResolvedPath);
+					return TEXT("");
+				}
+			}
 		}
 	}
 
-	return DiskPath;
+	// Cook 目录中不存在则返回空，不 fallback 到源码目录
+	FString CookedMapPath = FPaths::Combine(ResolvedCookedDir, RelativePath + TEXT(".umap"));
+	if (FPaths::FileExists(*CookedMapPath))
+	{
+		return CookedMapPath;
+	}
+
+	// 再尝试 .uasset（普通资源）
+	FString CookedAssetPath = FPaths::Combine(ResolvedCookedDir, RelativePath + TEXT(".uasset"));
+	if (FPaths::FileExists(*CookedAssetPath))
+	{
+		return CookedAssetPath;
+	}
+
+
+	// Cook 目录中不存在则返回空，不 fallback 到源码目录
+	return TEXT("");
 }
 
 bool UHotUpdatePatchPackageBuilder::LoadPreviousPatchManifest(
@@ -1980,7 +2055,7 @@ int32 UHotUpdatePatchPackageBuilder::CopyContainerFiles(
 	return CopiedCount;
 }
 
-bool UHotUpdatePatchPackageBuilder::CompileProject(const FHotUpdatePatchPackageConfig& Config)
+bool UHotUpdatePatchPackageBuilder::CompileProject()
 {
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始编译项目..."));
 
@@ -1991,7 +2066,7 @@ bool UHotUpdatePatchPackageBuilder::CompileProject(const FHotUpdatePatchPackageC
 		FPaths::Combine(EngineDir, TEXT("Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll")));
 
 	FString ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
-	FString PlatformName = HotUpdateUtils::GetPlatformDirectoryName(Config.Platform);
+	FString PlatformName = HotUpdateUtils::GetPlatformDirectoryName(CurrentConfig.Platform);
 	FString BuildConfig = TEXT("Development");
 
 	// UBT 命令: dotnet UnrealBuildTool.dll <TargetName> <Platform> <Config> -project="..."
@@ -2046,16 +2121,22 @@ bool UHotUpdatePatchPackageBuilder::CompileProject(const FHotUpdatePatchPackageC
 	return true;
 }
 
-bool UHotUpdatePatchPackageBuilder::CookAssets(const FHotUpdatePatchPackageConfig& Config)
+bool UHotUpdatePatchPackageBuilder::CookAssets()
 {
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始 Cook 资源..."));
 
 	// 使用子进程执行 Cook，避免在当前 Editor 进程中调用 CookCommandlet 导致的平台冲突
 	FString EngineDir = FPaths::EngineDir();
+	#if PLATFORM_WINDOWS
 	FString ExePath = FPaths::ConvertRelativePathToFull(EngineDir / TEXT("Binaries/Win64/UnrealEditor-Cmd.exe"));
+#elif PLATFORM_MAC
+	FString ExePath = FPaths::ConvertRelativePathToFull(EngineDir / TEXT("Binaries/Mac/UnrealEditor-Cmd"));
+#else
+	FString ExePath = FPaths::ConvertRelativePathToFull(EngineDir / TEXT("Binaries/Win64/UnrealEditor-Cmd.exe"));
+#endif
 	FString ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
 
-	FString CookPlatform = HotUpdateUtils::GetPlatformString(Config.Platform);
+	FString CookPlatform = HotUpdateUtils::GetPlatformString(CurrentConfig.Platform);
 	FString Params = FString::Printf(TEXT("\"%s\" -run=cook -targetplatform=%s -NullRHI -unattended -NoSound"),
 		*ProjectPath, *CookPlatform);
 

@@ -208,7 +208,13 @@ bool UHotUpdateIoStoreBuilder::CreateIoStoreWithUnrealPak(
 FString UHotUpdateIoStoreBuilder::FindUnrealPakPath(FString& OutErrorMessage)
 {
 	FString EngineDir = FPaths::EngineDir();
+	#if PLATFORM_WINDOWS
 	FString UnrealPakPath = FPaths::Combine(EngineDir, TEXT("Binaries/Win64/UnrealPak.exe"));
+#elif PLATFORM_MAC
+	FString UnrealPakPath = FPaths::Combine(EngineDir, TEXT("Binaries/Mac/UnrealPak"));
+#else
+	FString UnrealPakPath = FPaths::Combine(EngineDir, TEXT("Binaries/Win64/UnrealPak.exe"));
+#endif
 
 	if (!FPaths::FileExists(UnrealPakPath))
 	{

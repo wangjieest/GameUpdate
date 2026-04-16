@@ -77,7 +77,7 @@ public:
 	 * 如 "/Game/Startup/umg_hotupdate" -> "Game/Startup/umg_hotupdate.uasset"
 	 * 如 "/Game/Maps/MainMenu" -> "Game/Maps/MainMenu.umap"
 	 */
-	static FString ConvertAssetPathToFileName(const FString& AssetPath);
+	static FString ConvertAssetPathToFileName(const FString& AssetPath, const FString& CookedPlatformDir);
 
 
 	/**
@@ -90,27 +90,26 @@ public:
 	/**
 	 * 获取资源磁盘路径
 	 */
-		static FString GetAssetDiskPath(const FString& AssetPath, const FString& CookedPlatformDir = TEXT(""));
+		static FString GetAssetDiskPath(const FString& AssetPath, const FString& CookedPlatformDir);
 
 private:
 	/**
 	 * Cook 资源
 	 * 使用子进程执行 Cook，避免在当前 Editor 进程中调用 CookCommandlet 导致的平台冲突
 	 */
-	bool CookAssets(const FHotUpdatePatchPackageConfig& Config);
+	bool CookAssets();
 
 	/**
 	 * 编译项目
 	 * 使用 UAT BuildCookRun -build 编译游戏代码
 	 * 必须在 Cook 之前调用，确保 Cook 使用最新的代码
 	 */
-	bool CompileProject(const FHotUpdatePatchPackageConfig& Config);
+	bool CompileProject();
 
 	/**
 	 * 收集资源
 	 */
 	bool CollectAssets(
-		const FHotUpdatePatchPackageConfig& Config,
 		TArray<FString>& OutAssetPaths,
 		TMap<FString, FString>& OutAssetDiskPaths,
 		FString& OutErrorMessage);
@@ -184,7 +183,6 @@ private:
 	 * @param BaseAssetHashes 基础版本资源 Hash（用于未变更资源）
 	 * @param BaseAssetSizes 基础版本资源大小（用于未变更资源）
 	 * @param DiffReport 差异报告
-	 * @param Config 配置
 	 */
 	bool GenerateManifest(
 		const FString& ManifestPath,
@@ -195,7 +193,6 @@ private:
 		const TMap<FString, FString>& BaseAssetHashes,
 		const TMap<FString, int64>& BaseAssetSizes,
 		const FHotUpdateDiffReport& DiffReport,
-		const FHotUpdatePatchPackageConfig& Config,
 		const TArray<FHotUpdateContainerInfo>& ChainPatchContainers = TArray<FHotUpdateContainerInfo>(),
 		const TMap<FString, FString>& PreviousPatchFilesHash = TMap<FString, FString>(),
 		const TMap<FString, int64>& PreviousPatchFilesSize = TMap<FString, int64>(),
@@ -212,6 +209,9 @@ private:
 		const FString& CurrentFile,
 		int32 ProcessedFiles,
 		int32 TotalFiles);
+
+	/// 构建配置
+	FHotUpdatePatchPackageConfig CurrentConfig;
 
 	/// 是否正在构建
 	std::atomic<bool> bIsBuilding;

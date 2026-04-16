@@ -134,12 +134,12 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 	// 2. 写入最小包配置
 	if (CurrentConfig.MinimalPackageConfig.bEnableMinimalPackage)
 	{
-		WriteMinimalPackageConfig(CurrentConfig.MinimalPackageConfig);
+		WriteMinimalPackageConfig();
 	}
 
 	// 3. 执行打包
 	FString ErrorMsg;
-	FString UATCommand = GenerateUATCommand(CurrentConfig);
+	FString UATCommand = GenerateUATCommand();
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("UAT 命令: %s"), *UATCommand);
 	bool bPackageSuccess = ExecuteUATPackage(UATCommand, ErrorMsg);
 
@@ -184,7 +184,7 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 	// 4. 检查输出
 	UpdateProgress(TEXT("检查构建输出"), 0.85f, TEXT("正在检查构建输出..."));
 
-	if (!CheckBuildOutput(OutputDir, CurrentConfig.Platform, Result.ExecutablePath))
+	if (!CheckBuildOutput(OutputDir, Result.ExecutablePath))
 	{
 		Result.bSuccess = false;
 		Result.ErrorMessage = TEXT("未找到构建输出文件");
@@ -208,7 +208,7 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 
 	if (bSynchronous)
 	{
-		if (!SaveResourceHashesInGameThread(CurrentConfig.VersionString, CurrentConfig.Platform))
+		if (!SaveResourceHashesInGameThread())
 		{
 			UE_LOG(LogHotUpdateEditor, Warning, TEXT("保存资源Hash清单失败，但构建成功"));
 		}
@@ -218,7 +218,7 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 		TPromise<bool> SaveResultPromise;
 		AsyncTask(ENamedThreads::GameThread, [this, &SaveResultPromise]()
 		{
-			bool bSuccess = SaveResourceHashesInGameThread(CurrentConfig.VersionString, CurrentConfig.Platform);
+			bool bSuccess = SaveResourceHashesInGameThread();
 			SaveResultPromise.SetValue(bSuccess);
 		});
 		TFuture<bool> SaveFuture = SaveResultPromise.GetFuture();
@@ -254,7 +254,7 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 	}
 }
 
-FString UHotUpdateBaseVersionBuilder::GenerateUATCommand(const FHotUpdateBaseVersionBuildConfig& Config)
+FString UHotUpdateBaseVersionBuilder::GenerateUATCommand()
 {
 	// 获取引擎目录
 	FString EngineDir = FPaths::EngineDir();
@@ -275,16 +275,16 @@ FString UHotUpdateBaseVersionBuilder::GenerateUATCommand(const FHotUpdateBaseVer
 	FString ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
 
 	// 输出目录
-	FString OutputDir = Config.OutputDirectory;
+	FString OutputDir = CurrentConfig.OutputDirectory;
 	if (OutputDir.IsEmpty())
 	{
 		OutputDir = GetDefaultOutputDirectory();
 	}
-	OutputDir = FPaths::ConvertRelativePathToFull(FPaths::Combine(OutputDir, Config.VersionString));
+	OutputDir = FPaths::ConvertRelativePathToFull(FPaths::Combine(OutputDir, CurrentConfig.VersionString));
 
 	// 构建配置
 	FString BuildConfig;
-	switch (Config.BuildConfiguration)
+	switch (CurrentConfig.BuildConfiguration)
 	{
 	case EHotUpdateBuildConfiguration::DebugGame:
 		BuildConfig = TEXT("DebugGame");
@@ -301,7 +301,7 @@ FString UHotUpdateBaseVersionBuilder::GenerateUATCommand(const FHotUpdateBaseVer
 	}
 
 	// 平台
-	FString PlatformName = HotUpdateUtils::GetPlatformDirectoryName(Config.Platform);
+	FString PlatformName = HotUpdateUtils::GetPlatformDirectoryName(CurrentConfig.Platform);
 
 	// 构建参数部分
 	FString Params;
@@ -314,7 +314,7 @@ FString UHotUpdateBaseVersionBuilder::GenerateUATCommand(const FHotUpdateBaseVer
 
 	// 完整打包：Cook + Stage + Pak + Archive
 	Params += TEXT(" -cook");
-	if (!Config.bSkipBuild)
+	if (!CurrentConfig.bSkipBuild)
 	{
 		Params += TEXT(" -build");
 	}
@@ -323,20 +323,20 @@ FString UHotUpdateBaseVersionBuilder::GenerateUATCommand(const FHotUpdateBaseVer
 	Params += TEXT(" -pak");
 
 	// 最小包模式：启用 Chunk 分离，由 StripExtraPakChunks.Automation.cs 后处理
-	if (Config.MinimalPackageConfig.bEnableMinimalPackage &&
-		Config.MinimalPackageConfig.WhitelistDirectories.Num() > 0)
+	if (CurrentConfig.MinimalPackageConfig.bEnableMinimalPackage &&
+		CurrentConfig.MinimalPackageConfig.WhitelistDirectories.Num() > 0)
 	{
 		Params += TEXT(" -generateChunks");
 		Params += FString::Printf(TEXT(" -ScriptsForProject=\"%s\""), *ProjectPath);  // 加载项目的自动化脚本（StripExtraPakChunks）
 		Params += TEXT(" -MinimalPackage");
 		// 热更资源输出目录（pakchunk1+ 移到此目录，与 manifest 同级）
 		// 传版本根目录（不含平台），StripExtraPakChunks 会将 staging 子目录结构保留
-		FString HotUpdatePaksDir = UHotUpdateVersionManager::GetVersionDir(Config.VersionString, Config.Platform) / TEXT("Paks");
+		FString HotUpdatePaksDir = UHotUpdateVersionManager::GetVersionDir(CurrentConfig.VersionString, CurrentConfig.Platform) / TEXT("Paks");
 		FPaths::NormalizeDirectoryName(HotUpdatePaksDir);
 		Params += FString::Printf(TEXT(" -HotUpdateOutputDir=\"%s\""), *HotUpdatePaksDir);
 		// Build whitelist dirs parameter (semicolon-separated)
 		FString WhitelistStr;
-		for (const FDirectoryPath& Dir : Config.MinimalPackageConfig.WhitelistDirectories)
+		for (const FDirectoryPath& Dir : CurrentConfig.MinimalPackageConfig.WhitelistDirectories)
 		{
 			if (!WhitelistStr.IsEmpty())
 			{
@@ -347,22 +347,22 @@ FString UHotUpdateBaseVersionBuilder::GenerateUATCommand(const FHotUpdateBaseVer
 		Params += FString::Printf(TEXT(" WhitelistDirs=%s"), *WhitelistStr);
 
 		// Write config to temp file for cooking process to read
-		WriteMinimalPackageConfig(Config.MinimalPackageConfig);
+		WriteMinimalPackageConfig();
 
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("MinimalPackage mode: WhitelistDirs=%s"), *WhitelistStr);
 	}
 
-	if (Config.bPackageAll)
+	if (CurrentConfig.bPackageAll)
 	{
 		Params += TEXT(" -package");
 		}
 
 		// Android 特定配置
-		if (Config.Platform == EHotUpdatePlatform::Android)
+		if (CurrentConfig.Platform == EHotUpdatePlatform::Android)
 	{
 			// 根据纹理格式配置 cookflavor
 			FString TextureFormat;
-			switch (Config.AndroidTextureFormat)
+			switch (CurrentConfig.AndroidTextureFormat)
 			{
 			case EHotUpdateAndroidTextureFormat::ETC2:
 				TextureFormat = TEXT("ETC2");
@@ -387,14 +387,14 @@ FString UHotUpdateBaseVersionBuilder::GenerateUATCommand(const FHotUpdateBaseVer
 			}
 
 		// 添加包名配置
-		if (!Config.AndroidPackageName.IsEmpty())
+		if (!CurrentConfig.AndroidPackageName.IsEmpty())
 		{
-			Params += FString::Printf(TEXT(" -packagename=%s"), *Config.AndroidPackageName);
+			Params += FString::Printf(TEXT(" -packagename=%s"), *CurrentConfig.AndroidPackageName);
 		}
 	}
 
 	// DebugGame 模式下生成调试信息
-	if (Config.BuildConfiguration == EHotUpdateBuildConfiguration::DebugGame)
+	if (CurrentConfig.BuildConfiguration == EHotUpdateBuildConfiguration::DebugGame)
 	{
 		Params += TEXT(" -Debug");
 	}
@@ -420,15 +420,15 @@ FString UHotUpdateBaseVersionBuilder::GenerateUATCommand(const FHotUpdateBaseVer
 }
 
 
-void UHotUpdateBaseVersionBuilder::WriteMinimalPackageConfig(const FHotUpdateMinimalPackageConfig& Config)
+void UHotUpdateBaseVersionBuilder::WriteMinimalPackageConfig()
 {
 	FString ConfigFile = FPaths::ProjectIntermediateDir() / TEXT("MinimalPackageConfig.json");
 
 	TSharedPtr<FJsonObject> JsonObj = MakeShareable(new FJsonObject);
-	JsonObj->SetBoolField(TEXT("bEnableMinimalPackage"), Config.bEnableMinimalPackage);
+	JsonObj->SetBoolField(TEXT("bEnableMinimalPackage"), CurrentConfig.MinimalPackageConfig.bEnableMinimalPackage);
 
 	TArray<TSharedPtr<FJsonValue>> WhitelistArray;
-	for (const FDirectoryPath& Dir : Config.WhitelistDirectories)
+	for (const FDirectoryPath& Dir : CurrentConfig.MinimalPackageConfig.WhitelistDirectories)
 	{
 		WhitelistArray.Add(MakeShareable(new FJsonValueString(Dir.Path)));
 	}
@@ -535,7 +535,7 @@ bool UHotUpdateBaseVersionBuilder::ExecuteUATPackage(const FString& UATCommand, 
 	return true;
 }
 
-bool UHotUpdateBaseVersionBuilder::CheckBuildOutput(const FString& OutputDir, EHotUpdatePlatform Platform, FString& OutExecutablePath)
+bool UHotUpdateBaseVersionBuilder::CheckBuildOutput(const FString& OutputDir, FString& OutExecutablePath)
 {
 	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
 
@@ -545,14 +545,14 @@ bool UHotUpdateBaseVersionBuilder::CheckBuildOutput(const FString& OutputDir, EH
 		return false;
 	}
 
-	switch (Platform)
+	switch (CurrentConfig.Platform)
 	{
 	case EHotUpdatePlatform::Windows:
 		{
 			// Windows 输出在 OutputDir\Windows\ 目录下
-			FString WindowsDir = FPaths::Combine(OutputDir, TEXT("Windows"));
+			FString PlatformSubDir = FPaths::Combine(OutputDir, HotUpdateUtils::GetPlatformString(CurrentConfig.Platform));
 			TArray<FString> FoundFiles;
-			PlatformFile.FindFilesRecursively(FoundFiles, *WindowsDir, TEXT("exe"));
+			PlatformFile.FindFilesRecursively(FoundFiles, *PlatformSubDir, TEXT("exe"));
 
 			if (FoundFiles.Num() > 0)
 			{
@@ -591,7 +591,7 @@ bool UHotUpdateBaseVersionBuilder::CheckBuildOutput(const FString& OutputDir, EH
 	return false;
 }
 
-bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString& VersionString, EHotUpdatePlatform Platform)
+bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 {
 	// 从打包输出目录获取容器文件列表
 	FString OutputDir = CurrentConfig.OutputDirectory;
@@ -599,13 +599,13 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 	{
 		OutputDir = GetDefaultOutputDirectory();
 	}
-	OutputDir = FPaths::Combine(OutputDir, VersionString);
+	OutputDir = FPaths::Combine(OutputDir, CurrentConfig.VersionString);
 	FPaths::NormalizeDirectoryName(OutputDir);
 
 	// 根据平台获取 UAT 输出子目录名
 	// 注意：Android + cookflavor 时 UAT 输出目录为 Android_ASTC / Android_ETC2 等
 	FString PlatformDir;
-	if (Platform == EHotUpdatePlatform::Android && CurrentConfig.AndroidTextureFormat != EHotUpdateAndroidTextureFormat::Multi)
+	if (CurrentConfig.Platform == EHotUpdatePlatform::Android && CurrentConfig.AndroidTextureFormat != EHotUpdateAndroidTextureFormat::Multi)
 	{
 		FString TextureFormat;
 		switch (CurrentConfig.AndroidTextureFormat)
@@ -621,12 +621,12 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 		}
 		else
 		{
-			PlatformDir = FPaths::Combine(OutputDir, TEXT("Android"));
+			PlatformDir = FPaths::Combine(OutputDir, HotUpdateUtils::GetPlatformString(CurrentConfig.Platform));
 		}
 	}
 	else
 	{
-		PlatformDir = FPaths::Combine(OutputDir, HotUpdateUtils::GetPlatformString(Platform));
+		PlatformDir = FPaths::Combine(OutputDir, HotUpdateUtils::GetPlatformString(CurrentConfig.Platform));
 	}
 	if (!IPlatformFile::GetPlatformPhysical().DirectoryExists(*PlatformDir))
 	{
@@ -639,7 +639,7 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
 
 	// 版本目录（manifest 所在目录，StripExtraPakChunks 也会将 pakchunk1+ 移到此目录）
-	FString VersionDir = UHotUpdateVersionManager::GetVersionDir(VersionString, Platform);
+	FString VersionDir = UHotUpdateVersionManager::GetVersionDir(CurrentConfig.VersionString, CurrentConfig.Platform);
 	FPaths::NormalizeDirectoryName(VersionDir);
 	IPlatformFile::GetPlatformPhysical().CreateDirectoryTree(*VersionDir);
 
@@ -710,8 +710,8 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 
 	// 版本信息
 	TSharedPtr<FJsonObject> VersionObject = MakeShareable(new FJsonObject);
-	VersionObject->SetStringField(TEXT("version"), VersionString);
-	VersionObject->SetStringField(TEXT("platform"), HotUpdateUtils::GetPlatformDirectoryName(Platform));
+	VersionObject->SetStringField(TEXT("version"), CurrentConfig.VersionString);
+	VersionObject->SetStringField(TEXT("platform"), HotUpdateUtils::GetPlatformDirectoryName(CurrentConfig.Platform));
 	VersionObject->SetNumberField(TEXT("timestamp"), FDateTime::Now().ToUnixTimestamp());
 
 	RootObject->SetObjectField(TEXT("version"), VersionObject);
@@ -871,7 +871,7 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 	// 获取白名单资源磁盘路径
 	for (const FString& AssetPath : AssetPaths)
 	{
-		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath, TEXT(""));
+		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath, HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform));
 
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
@@ -883,7 +883,7 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 	TMap<FString, FString> PatchDiskPaths;
 	for (const FString& AssetPath : PatchAssets)
 	{
-		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath, TEXT(""));
+		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath, HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform));
 
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
@@ -909,7 +909,7 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 		const FString& DiskPath = Pair.Value;
 
 		TSharedPtr<FJsonObject> FileObj = MakeShareable(new FJsonObject);
-		FileObj->SetStringField(TEXT("filePath"), UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(AssetPath));
+		FileObj->SetStringField(TEXT("filePath"), UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(AssetPath, HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform)));
 		FileObj->SetNumberField(TEXT("fileSize"), IFileManager::Get().FileSize(*DiskPath));
 		FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(DiskPath));
 		FileObj->SetNumberField(TEXT("chunkId"), 0);
@@ -927,7 +927,7 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 		const FString& DiskPath = Pair.Value;
 
 		TSharedPtr<FJsonObject> FileObj = MakeShareable(new FJsonObject);
-		FileObj->SetStringField(TEXT("filePath"), UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(AssetPath));
+		FileObj->SetStringField(TEXT("filePath"), UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(AssetPath, HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform)));
 		FileObj->SetNumberField(TEXT("fileSize"), IFileManager::Get().FileSize(*DiskPath));
 		FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(DiskPath));
 		FileObj->SetNumberField(TEXT("chunkId"), 11);
@@ -957,16 +957,16 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread(const FString&
 	// ========== 注册版本信息 ==========
 	UHotUpdateVersionManager* VersionManager = NewObject<UHotUpdateVersionManager>();
 	FHotUpdateEditorVersionInfo VersionInfo;
-	VersionInfo.VersionString = VersionString;
+	VersionInfo.VersionString = CurrentConfig.VersionString;
 	VersionInfo.PackageKind = EHotUpdatePackageKind::Base;
-	VersionInfo.Platform = Platform;
+	VersionInfo.Platform = CurrentConfig.Platform;
 	VersionInfo.CreatedTime = FDateTime::Now();
 	VersionInfo.ManifestPath = ManifestFilePath;
 	VersionInfo.AssetCount = AssetDiskPaths.Num() + PatchDiskPaths.Num();
 
 	VersionManager->RegisterVersion(VersionInfo);
 
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("版本注册成功: %s"), *VersionString);
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("版本注册成功: %s"), *CurrentConfig.VersionString);
 
 	return true;
 }

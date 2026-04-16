@@ -71,7 +71,6 @@ private:
 	 * 收集资源
 	 */
 	bool CollectAssets(
-		const FHotUpdateBasePackageConfig& Config,
 		TArray<FString>& OutAssetPaths,
 		TMap<FString, FString>& OutAssetDiskPaths,
 		FString& OutErrorMessage);
@@ -81,13 +80,13 @@ private:
 	 * 使用 UAT BuildCookRun -build 编译游戏代码
 	 * 必须在 Cook 之前调用，确保 Cook 使用最新的代码
 	 */
-	bool CompileProject(const FHotUpdateBasePackageConfig& Config);
+	bool CompileProject();
 
 	/**
 	 * Cook 资源
 	 * 使用子进程执行 Cook，避免在当前 Editor 进程中调用 CookCommandlet 导致的平台冲突
 	 */
-	bool CookAssets(const FHotUpdateBasePackageConfig& Config);
+	bool CookAssets();
 
 	/**
 	 * 生成 Manifest
@@ -97,8 +96,7 @@ private:
 		const TArray<FString>& AssetPaths,
 		const TMap<FString, FString>& AssetDiskPaths,
 		const TArray<FHotUpdateChunkDefinition>& Chunks,
-		const TArray<FHotUpdateContainerInfo>& Containers,
-		const FHotUpdateBasePackageConfig& Config);
+		const TArray<FHotUpdateContainerInfo>& Containers);
 
 	/**
 	 * 更新进度
@@ -113,7 +111,6 @@ private:
 	 * 使用预收集的资源构建基础包（可在后台线程安全调用）
 	 */
 	FHotUpdateBasePackageResult BuildBasePackageWithPreCollectedAssets(
-		const FHotUpdateBasePackageConfig& Config,
 		const TArray<FString>& PreCollectedAssetPaths,
 		const TMap<FString, FString>& PreCollectedAssetDiskPaths);
 
@@ -121,11 +118,13 @@ private:
 	 * 内部构建逻辑（Chunk分析、IoStore创建、清单生成、版本注册）
 	 */
 	FHotUpdateBasePackageResult BuildBasePackageInternal(
-		const FHotUpdateBasePackageConfig& Config,
 		const TArray<FString>& AssetPaths,
 		const TMap<FString, FString>& AssetDiskPaths);
 
 private:
+	/// 构建配置
+	FHotUpdateBasePackageConfig CurrentConfig;
+
 	/// 是否正在构建
 	std::atomic<bool> bIsBuilding;
 

@@ -23,4 +23,11 @@ namespace HotUpdateUtils
 	 * @return 平台目录名称 ("Win64", "Android", "IOS")
 	 */
 	HOTUPDATEEDITOR_API FString GetPlatformDirectoryName(EHotUpdatePlatform Platform);
+
+	/**
+	 * 获取 Cooked 平台目录路径（Saved/Cooked/{PlatformName}）
+	 * @param Platform 平台枚举值
+	 * @return Cooked 平台目录的完整路径
+	 */
+	HOTUPDATEEDITOR_API FString GetCookedPlatformDir(EHotUpdatePlatform Platform);
 }

@@ -20,7 +20,7 @@ Unreal Engine 5.7 热更新（OTA 补丁）插件，支持 Pak/IoStore 打包、
 |------|------|
 | 运行时热更新 | 检测版本 → 下载补丁 → 挂载 Pak，全流程自动化 |
 | 增量更新 | 基于 diff 的差异下载，减少下载量 |
-| 并发下载 | HTTP 多线程下载，支持暂停/恢复/重试 |
+| 并发下载 | 多平台差异化下载实现，支持暂停/恢复/重试 |
 | Pak 挂载 | 运行时动态挂载/卸载 Pak 文件，支持加密密钥注册 |
 | 版本管理 | JSON 清单格式，支持链式更新（1.0.0 → 1.0.1 → 1.0.2） |
 | 编辑器工具 | 4 合 1 Slate 面板：基础包构建、补丁打包、版本对比、Pak 查看器 |
@@ -33,7 +33,7 @@ Unreal Engine 5.7 热更新（OTA 补丁）插件，支持 Pak/IoStore 打包、
 - Unreal Engine 5.7
 - Visual Studio 2022 / Rider
 - Android SDK（Android 打包需要）
-- Windows / Android 平台
+- Windows / Android / iOS 平台
 
 ## 快速开始
 
@@ -274,7 +274,10 @@ EHotUpdateChunkState State = HotUpdateManager->GetChunkState(ChunkId);
 | 类 | 说明 |
 |----|------|
 | `UHotUpdateManager` | 核心调度器，流程：CheckForUpdate → StartDownload → ApplyUpdate |
-| `UHotUpdateHttpDownloader` | HTTP 并发下载，暂停/恢复/重试 |
+| `UHotUpdateDownloaderBase` | 下载器抽象基类，定义统一接口，工厂函数自动选择平台实现 |
+| `UHotUpdateHttpDownloader` | HTTP 并发下载（Windows/Mac/Linux），暂停/恢复/重试/断点续传 |
+| `UHotUpdateAndroidDownloader` | Android 原生下载，通过 JNI 调用 DownloadManager API，App 挂起后继续下载 |
+| `UHotUpdateIOSDownloader` | iOS 后台下载，通过 NSURLSession background transfer，App 进入后台后继续下载 |
 | `UHotUpdatePakManager` | Pak 挂载/卸载/校验 |
 | `UHotUpdateManifestParser` | JSON 清单解析 |
 | `UHotUpdateIncrementalCalculator` | 增量差异计算 |
@@ -311,6 +314,10 @@ GameUpdate/
 │       │   ├── Public/              # 头文件
 │       │   │   ├── Core/            # 核心类
 │       │   │   ├── Download/        # 下载相关
+│       │   │   │   ├── HotUpdateDownloaderBase.h       # 下载器抽象基类
+│       │   │   │   ├── HotUpdateHttpDownloader.h      # HTTP 下载器（桌面平台）
+│       │   │   │   ├── HotUpdateAndroidDownloader.h   # Android 原生下载器
+│       │   │   │   └── HotUpdateIOSDownloader.h      # iOS 后台下载器
 │       │   │   ├── Manifest/        # 清单相关
 │       │   │   └── Pak/             # Pak 管理
 │       │   └── Private/             # 实现文件
@@ -349,7 +356,10 @@ LogHotUpdateEditor=Verbose
 
 ### Q: 支持哪些平台？
 
-A: 当前支持 Windows 和 Android 平台。iOS 支持正在开发中。
+A: 当前支持 Windows、Android 和 iOS 平台。下载模块根据平台自动选择实现：
+- **Windows/Mac/Linux**：使用 HTTP 下载器（UE FHttpModule）
+- **Android**：使用 Android DownloadManager API，App 挂起后仍可继续下载
+- **iOS**：使用 NSURLSession 后台传输模式，App 进入后台后继续下载
 
 ### Q: 增量更新如何工作？
 

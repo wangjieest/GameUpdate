@@ -5,6 +5,7 @@
 #include "Core/HotUpdateFileUtils.h"
 #include "HotUpdateEditor.h"
 #include "HotUpdateVersionManager.h"
+#include "HotUpdatePackagingSettingsHelper.h"
 #include "HotUpdateUtils.h"
 #include "HotUpdateAssetFilter.h"
 #include "Core/HotUpdateSettings.h"
@@ -39,6 +40,8 @@ struct FHotUpdateResolvedAssetInfo
 	/** 源文件路径（Content 目录下的 .uasset/.umap），用于 Hash 计算 */
 	FString SourcePath;
 
+	FHotUpdateResolvedAssetInfo() = default;
+
 	FHotUpdateResolvedAssetInfo(const FString& InAssetPath, const FString& InDiskPath)
 		: AssetPath(InAssetPath)
 		, DiskPath(InDiskPath)
@@ -62,6 +65,21 @@ struct FHotUpdateResolvedAssetInfo
 
 		// 派生 SourcePath
 		SourcePath = UHotUpdatePatchPackageBuilder::GetAssetSourcePath(AssetPath);
+	}
+
+	/**
+	 * 从 Staged 文件构建（非 UE 资源，如 DirectoriesToAlwaysStageAsUFS/NonUFS 中的文件）
+	 * @param InPakPath pak 内路径（如 GameUpdate/Content/Setting/ui.txt），也用作 filemanifest.json 中的 filePath
+	 * @param InSourcePath 源文件磁盘路径（如 D:/Project/Content/Setting/ui.txt），用于 Hash 计算
+	 */
+	static FHotUpdateResolvedAssetInfo FromStagedFile(const FString& InPakPath, const FString& InSourcePath)
+	{
+		FHotUpdateResolvedAssetInfo Info;
+		Info.AssetPath = InPakPath;
+		Info.DiskPath = InSourcePath;
+		Info.FileName = InPakPath;
+		Info.SourcePath = InSourcePath;
+		return Info;
 	}
 
 	/** 获取用于 Hash 计算的路径（优先 SourcePath，回退 DiskPath） */
@@ -677,6 +695,19 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 	TArray<FHotUpdateResolvedAssetInfo> BaseAssets = ResolveAssetInfo(AssetPaths, CookedPlatformDir);
 	TArray<FHotUpdateResolvedAssetInfo> PatchAssets = ResolveAssetInfo(PatchAssetPaths, CookedPlatformDir);
 
+	// 6.5. 收集 DirectoriesToAlwaysStageAsUFS/NonUFS 中的 Staged 文件
+	TArray<FString> StagedPakPaths = CollectStagedFilePaths();
+	for (const FString& PakPath : StagedPakPaths)
+	{
+		FString RelativePath = PakPath.RightChop(5); // 去掉 "Game/"
+		FString SourcePath = FPaths::ProjectContentDir() / RelativePath;
+
+		if (FPaths::FileExists(*SourcePath))
+		{
+			BaseAssets.Add(FHotUpdateResolvedAssetInfo::FromStagedFile(PakPath, SourcePath));
+		}
+	}
+
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("收集了 %d 个基础资源, %d 个热更资源用于差异计算"),
 		BaseAssets.Num(), PatchAssets.Num());
 
@@ -927,6 +958,12 @@ TArray<FString> UHotUpdateBaseVersionBuilder::CollectAllAssetPaths(IAssetRegistr
 	}
 
 	return UniqueAssetPaths.Array();
+}
+
+TArray<FString> UHotUpdateBaseVersionBuilder::CollectStagedFilePaths() const
+{
+	// 委托通用方法获取 Staged 文件的 pak 内路径列表
+	return FHotUpdatePackagingSettingsHelper::CollectStagedFilePaths();
 }
 
 void UHotUpdateBaseVersionBuilder::ApplyMinimalPackageFilter(

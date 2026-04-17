@@ -233,6 +233,12 @@ private:
 	TArray<FString> CollectAllAssetPaths(IAssetRegistry* AssetRegistry) const;
 
 	/**
+	 * 收集 DirectoriesToAlwaysStageAsUFS/NonUFS 中的文件
+	 * 这些是非 UE 资产文件，不在 AssetRegistry 中，但会被 UAT 打包到 pak
+	 */
+	TArray<FString> CollectStagedFilePaths() const;
+
+	/**
 	 * 应用最小包过滤，拆分白名单资源和热更资源
 	 */
 	void ApplyMinimalPackageFilter(

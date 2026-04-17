@@ -3,6 +3,9 @@
 #include "HotUpdatePackagingSettingsHelper.h"
 #include "HotUpdateEditor.h"
 #include "Settings/ProjectPackagingSettings.h"
+#include "HAL/PlatformFileManager.h"
+#include "Misc/Paths.h"
+#include "Misc/App.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 
@@ -224,6 +227,73 @@ FString FHotUpdatePackagingSettingsHelper::NormalizeAssetPath(const FString& Pat
 	return Result;
 }
 
+TArray<FString> FHotUpdatePackagingSettingsHelper::CollectStagedFilePaths()
+{
+	TArray<FString> StagedFilePaths;
+
+	if (const UProjectPackagingSettings* PackagingSettings = GetDefault<UProjectPackagingSettings>())
+	{
+		IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
+		FString ProjectName(FApp::GetProjectName());
+		FString ContentDir = FPaths::ProjectContentDir();
+
+		// 文件访问器，递归枚举目录中的所有文件
+		struct FStagedFileVisitor : public IPlatformFile::FDirectoryVisitor
+		{
+			TArray<FString>& OutFiles;
+			FStagedFileVisitor(TArray<FString>& InOutFiles) : OutFiles(InOutFiles) {}
+			virtual bool Visit(const TCHAR* FilenameOrDirectory, bool bIsDirectory) override
+			{
+				if (!bIsDirectory)
+				{
+					OutFiles.Add(FilenameOrDirectory);
+				}
+				return true;
+			}
+		};
+
+		auto CollectStagedDir = [&](const TArray<FDirectoryPath>& Directories)
+		{
+			for (const FDirectoryPath& DirPath : Directories)
+			{
+				if (DirPath.Path.IsEmpty()) continue;
+
+				FString FullDir = FPaths::Combine(ContentDir, DirPath.Path);
+				FPaths::NormalizeDirectoryName(FullDir);
+
+				if (!PlatformFile.DirectoryExists(*FullDir))
+				{
+					UE_LOG(LogHotUpdateEditor, Warning,
+						TEXT("Staged 目录不存在: %s"), *FullDir);
+					continue;
+				}
+
+				TArray<FString> FoundFiles;
+				FStagedFileVisitor Visitor(FoundFiles);
+				PlatformFile.IterateDirectoryRecursively(*FullDir, Visitor);
+
+				for (const FString& File : FoundFiles)
+				{
+					// 计算短路径: Content/Setting/ui.txt -> Game/Setting/ui.txt
+					FString RelativePath = File;
+					FPaths::MakePathRelativeTo(RelativePath, *ContentDir);
+					FString PakPath = TEXT("Game") / RelativePath;
+
+					StagedFilePaths.Add(PakPath);
+				}
+			}
+		};
+
+		// 收集 UFS Staged 文件（打包到 pak 内部）
+		CollectStagedDir(PackagingSettings->DirectoriesToAlwaysStageAsUFS);
+		// 收集 NonUFS Staged 文件（打包到 pak 外部，但仍需追踪）
+		CollectStagedDir(PackagingSettings->DirectoriesToAlwaysStageAsNonUFS);
+	}
+
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("收集了 %d 个 Staged 文件（UFS/NonUFS）"), StagedFilePaths.Num());
+
+	return StagedFilePaths;
+}
 
 bool FHotUpdatePackagingSettingsHelper::IsEditorContent(const FString& AssetPath)
 {

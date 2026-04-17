@@ -5,6 +5,7 @@
 #include "HotUpdateEditor.h"
 #include "HotUpdateUtils.h"
 #include "HotUpdatePackagingSettingsHelper.h"
+#include "Settings/ProjectPackagingSettings.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "HAL/PlatformFileManager.h"
@@ -314,7 +315,18 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	// 添加新增资源的磁盘路径
 	for (const FHotUpdateAssetDiff& AddedDiff : DiffReport.AddedAssets)
 	{
-		FString DiskPath = GetAssetDiskPath(AddedDiff.AssetPath, CookedPlatformDir);
+		FString DiskPath;
+		// Staged 文件（Game/ 前缀且非 UE 资源扩展名）映射到 Content 目录源文件
+		if (AddedDiff.AssetPath.StartsWith(TEXT("/Game/")) &&
+			!AddedDiff.AssetPath.EndsWith(TEXT(".uasset")) && !AddedDiff.AssetPath.EndsWith(TEXT(".umap")))
+		{
+			FString RelativePath = AddedDiff.AssetPath.RightChop(6); // 去掉 "Game/"
+			DiskPath = FPaths::ProjectContentDir() / RelativePath;
+		}
+		else
+		{
+			DiskPath = GetAssetDiskPath(AddedDiff.AssetPath, CookedPlatformDir);
+		}
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
 			ChangedAssetDiskPaths.Add(AddedDiff.AssetPath, DiskPath);
@@ -324,7 +336,18 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	// 添加修改资源的磁盘路径
 	for (const FHotUpdateAssetDiff& ModifiedDiff : DiffReport.ModifiedAssets)
 	{
-		FString DiskPath = GetAssetDiskPath(ModifiedDiff.AssetPath, CookedPlatformDir);
+		FString DiskPath;
+		// Staged 文件（Game/ 前缀且非 UE 资源扩展名）映射到 Content 目录源文件
+		if (ModifiedDiff.AssetPath.StartsWith(TEXT("/Game/")) &&
+			!ModifiedDiff.AssetPath.EndsWith(TEXT(".uasset")) && !ModifiedDiff.AssetPath.EndsWith(TEXT(".umap")))
+		{
+			FString RelativePath = ModifiedDiff.AssetPath.RightChop(6); // 去掉 "Game/"
+			DiskPath = FPaths::ProjectContentDir() / RelativePath;
+		}
+		else
+		{
+			DiskPath = GetAssetDiskPath(ModifiedDiff.AssetPath, CookedPlatformDir);
+		}
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
 			ChangedAssetDiskPaths.Add(ModifiedDiff.AssetPath, DiskPath);
@@ -1060,6 +1083,10 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(
 				return false;
 			}
 			AllAssetPaths = SettingsResult.AssetPaths;
+
+			// 收集 DirectoriesToAlwaysStageAsUFS/NonUFS 中的 Staged 文件
+			TArray<FString> StagedPaths = FHotUpdatePackagingSettingsHelper::CollectStagedFilePaths();
+			AllAssetPaths.Append(StagedPaths);
 		}
 		break;
 	}
@@ -1097,22 +1124,50 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(
 	FString CookedPlatformDir = HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform);
 	for (const FString& AssetPath : AllAssetPaths)
 	{
-		FString DiskPath = GetAssetDiskPath(AssetPath, CookedPlatformDir);
-		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
-		{
-			OutAssetPaths.Add(AssetPath);
-			OutAssetDiskPaths.Add(AssetPath, DiskPath);
+		// 检查是否为 Staged 文件（pak 内路径格式，如 GameUpdate/Content/Setting/ui.txt）
+		FString StagedPrefix = TEXT("Game/");
+		bool bIsStagedFile = AssetPath.StartsWith(StagedPrefix) &&
+			!AssetPath.EndsWith(TEXT(".uasset")) && !AssetPath.EndsWith(TEXT(".umap"));
 
-			// 同时收集源文件路径（用于 Hash 计算）
-			FString SourcePath = GetAssetSourcePath(AssetPath);
-			if (!SourcePath.IsEmpty())
+		if (bIsStagedFile)
+		{
+			// Staged 文件：从 pak 内路径映射回 Content 目录的源文件路径
+			// GameUpdate/Content/Setting/ui.txt -> Content/Setting/ui.txt
+			FString RelativePath = AssetPath.RightChop(5); // 去掉 "Game/"
+			FString SourcePath = FPaths::ProjectContentDir() / RelativePath;
+
+			if (FPaths::FileExists(*SourcePath))
 			{
-				OutAssetSourcePaths.Add(AssetPath, SourcePath);
+				// 归一化为 UE Long Package Name 格式（添加前导 /），以便与 FileNameToAssetPath 匹配
+				FString NormalizedAssetPath = TEXT("/") + AssetPath;
+				OutAssetPaths.Add(NormalizedAssetPath);
+				OutAssetDiskPaths.Add(NormalizedAssetPath, SourcePath);
+				OutAssetSourcePaths.Add(NormalizedAssetPath, SourcePath);
+			}
+			else
+			{
+				UE_LOG(LogHotUpdateEditor, Verbose, TEXT("跳过源文件不存在的 Staged 文件: %s"), *AssetPath);
 			}
 		}
 		else
 		{
-			UE_LOG(LogHotUpdateEditor, Verbose, TEXT("跳过无 cooked 文件的资源: %s"), *AssetPath);
+			FString DiskPath = GetAssetDiskPath(AssetPath, CookedPlatformDir);
+			if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
+			{
+				OutAssetPaths.Add(AssetPath);
+				OutAssetDiskPaths.Add(AssetPath, DiskPath);
+
+				// 同时收集源文件路径（用于 Hash 计算）
+				FString SourcePath = GetAssetSourcePath(AssetPath);
+				if (!SourcePath.IsEmpty())
+				{
+					OutAssetSourcePaths.Add(AssetPath, SourcePath);
+				}
+			}
+			else
+			{
+				UE_LOG(LogHotUpdateEditor, Verbose, TEXT("跳过无 cooked 文件的资源: %s"), *AssetPath);
+			}
 		}
 	}
 
@@ -1218,7 +1273,8 @@ bool UHotUpdatePatchPackageBuilder::ComputeDiff(
 		FHotUpdateAssetDiff Diff;
 		Diff.AssetPath = Path;
 		Diff.AssetType = Path.Contains(TEXT("/Maps/")) || Path.EndsWith(TEXT("_Map"))
-				? TEXT("umap") : TEXT("uasset");
+				? TEXT("umap") : Path.EndsWith(TEXT(".uasset"))
+				? TEXT("uasset") : TEXT("staged");
 
 		if (!bInBase && bInCurrent)
 		{
@@ -1652,6 +1708,14 @@ FString UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(const FString&
 	if (FileName.StartsWith(TEXT("/")))
 	{
 		FileName.RightChopInline(1);
+	}
+
+	// Staged 文件（如 GameUpdate/Content/Setting/ui.txt）已有扩展名，直接返回
+	FString CurrentExtension = FPaths::GetExtension(FileName);
+	if (!CurrentExtension.IsEmpty() && CurrentExtension != TEXT("uasset") && CurrentExtension != TEXT("umap"))
+	{
+		// 非 UE 资源扩展名，说明是 Staged 文件路径，直接作为 FileName
+		return FileName;
 	}
 
 	// 使用实际磁盘文件来确定后缀

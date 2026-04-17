@@ -109,6 +109,13 @@ public:
 	static FString NormalizeAssetPath(const FString& Path);
 
 
+	/**
+	 * 收集 DirectoriesToAlwaysStageAsUFS/NonUFS 中的 Staged 文件路径
+	 * Staged 文件是非 UE 资产文件（如 .txt, .ini），不在 AssetRegistry 中，但会被 UAT 打包
+	 * @return Staged 文件的 pak 内路径列表（如 GameUpdate/Content/Setting/ui.txt）
+	 */
+	static TArray<FString> CollectStagedFilePaths();
+
 private:
 	/**
 	 * 检查路径是否是编辑器内容

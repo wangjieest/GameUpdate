@@ -282,20 +282,30 @@ FString UHotUpdateIoStoreBuilder::GetPakInternalPath(const FString& AssetPath, c
 	else
 	{
 		// 优先从磁盘路径获取实际扩展名
-		if (!DiskPath.IsEmpty())
+		// Staged 文件（非 UE 资源，如 .txt/.ini）已有完整扩展名，不做分离
+		FString PathExt = FPaths::GetExtension(PakPath);
+		if (!PathExt.IsEmpty() && PathExt != TEXT("uasset") && PathExt != TEXT("umap"))
 		{
-			Extension = FPaths::GetExtension(DiskPath);
+			// 非 UE 资源扩展名，保留原始路径，Extension 留空避免步骤 3 追加
+			Extension = TEXT("");
 		}
-		if (Extension.IsEmpty())
+		else
 		{
-			// 回退：地图用 .umap，其他用 .uasset
-			if (PakPath.Contains(TEXT("/Maps/")) || PakPath.Contains(TEXT("/Map/")))
+			if (!DiskPath.IsEmpty())
 			{
-				Extension = TEXT("umap");
+				Extension = FPaths::GetExtension(DiskPath);
 			}
-			else
+			if (Extension.IsEmpty())
 			{
-				Extension = TEXT("uasset");
+				// 回退：地图用 .umap，其他用 .uasset
+				if (PakPath.Contains(TEXT("/Maps/")) || PakPath.Contains(TEXT("/Map/")))
+				{
+					Extension = TEXT("umap");
+				}
+				else
+				{
+					Extension = TEXT("uasset");
+				}
 			}
 		}
 	}

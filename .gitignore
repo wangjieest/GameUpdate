@@ -36,3 +36,8 @@ __pycache__/
 
 # Logs
 *.log
+Build/Android/
+Build/Android_ASTC/
+Build/AutomationScripts/bin/
+Build/AutomationScripts/obj/
+Build/Windows/

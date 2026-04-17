@@ -6,6 +6,8 @@
 #include "HotUpdateEditorTypes.h"
 #include "HotUpdateBaseVersionBuilder.generated.h"
 
+class IAssetRegistry;
+
 /**
  * 基础版本构建进度
  */
@@ -132,6 +134,9 @@ struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildConfig
 	}
 };
 
+// 资源解析结果前向声明（实现细节，定义在 .cpp）
+struct FHotUpdateResolvedAssetInfo;
+
 /**
  * 基础版本构建器
  * 负责完整的项目打包（exe/apk）并保存为基础版本
@@ -175,10 +180,10 @@ public:
 	FOnBaseVersionBuildCompleteDelegate OnBuildComplete;
 
 private:
-			/**
-		 * 执行构建（内部实现，支持同步/异步模式）
-		 */
-		void ExecuteBuildInternal(bool bSynchronous);
+	/**
+	 * 执行构建（内部实现，支持同步/异步模式）
+	 */
+	void ExecuteBuildInternal(bool bSynchronous);
 
 	/**
 	 * 写入最小包配置到临时文件，供 UAT 打包时读取
@@ -199,6 +204,58 @@ private:
 	 * 打包完成后保存资源Hash清单
 	 */
 	bool SaveResourceHashesInGameThread();
+
+	/**
+	 * 解析平台打包输出目录（处理 Android 纹理格式命名）
+	 * @return 解析后的平台目录路径，失败返回空字符串
+	 */
+	FString ResolvePlatformOutputDir() const;
+
+	/**
+	 * 收集 IoStore 容器文件信息（.utoc/.ucas）
+	 */
+	TArray<FHotUpdateContainerInfo> CollectContainerInfos(const FString& PlatformDir, const FString& VersionDir) const;
+
+	/**
+	 * 生成并保存 manifest.json
+	 * @param OutVersionObject 共享的版本信息 JSON 对象（供 filemanifest.json 复用）
+	 * @param OutChunksArray 共享的 chunks 数组（供 filemanifest.json 复用）
+	 */
+	bool BuildManifestJson(
+		const FString& VersionDir,
+		const TArray<FHotUpdateContainerInfo>& ContainerInfos,
+		TSharedPtr<FJsonObject>& OutVersionObject,
+		TArray<TSharedPtr<FJsonValue>>& OutChunksArray) const;
+
+	/**
+	 * 从 AssetRegistry 收集所有被打包的资源路径
+	 */
+	TArray<FString> CollectAllAssetPaths(IAssetRegistry* AssetRegistry) const;
+
+	/**
+	 * 应用最小包过滤，拆分白名单资源和热更资源
+	 */
+	void ApplyMinimalPackageFilter(
+		TArray<FString>& InOutAssetPaths,
+		TArray<FString>& OutPatchAssets,
+		IAssetRegistry* AssetRegistry) const;
+
+	/**
+	 * 解析资源磁盘路径并构建解析信息（消除 ConvertAssetPathToFileName 的冗余 GetAssetDiskPath 调用）
+	 */
+	TArray<FHotUpdateResolvedAssetInfo> ResolveAssetInfo(
+		const TArray<FString>& AssetPaths,
+		const FString& CookedPlatformDir) const;
+
+	/**
+	 * 生成并保存 filemanifest.json（去重基础/热更资源的文件条目生成）
+	 */
+	bool BuildFileManifestJson(
+		const FString& VersionDir,
+		const TSharedPtr<FJsonObject>& VersionObject,
+		const TArray<TSharedPtr<FJsonValue>>& ChunksArray,
+		const TArray<FHotUpdateResolvedAssetInfo>& BaseAssets,
+		const TArray<FHotUpdateResolvedAssetInfo>& PatchAssets) const;
 
 	/**
 	 * 检查打包输出是否存在

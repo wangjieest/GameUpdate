@@ -313,7 +313,7 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 	if (ManifestPath.IsEmpty())
 	{
 		// 优先从 HotUpdateVersions 目录查找
-		FString VersionDir = UHotUpdateVersionManager::GetVersionDir(BaseVersion, ParsePlatform(PlatformStr));
+		FString VersionDir = UHotUpdateVersionManager::GetVersionDir(BaseVersion, ParsePlatform(PlatformStr), ParseTextureFormat(TextureFormatStr));
 		ManifestPath = FPaths::Combine(VersionDir, TEXT("manifest.json"));
 
 		if (!FPaths::FileExists(*ManifestPath))

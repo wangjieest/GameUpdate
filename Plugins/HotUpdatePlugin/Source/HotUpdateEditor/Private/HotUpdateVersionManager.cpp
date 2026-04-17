@@ -340,6 +340,11 @@ FString UHotUpdateVersionManager::GetVersionDir(const FString& VersionString, EH
 	return FPaths::Combine(GetVersionRootDir(), VersionString, HotUpdateUtils::GetPlatformString(Platform));
 }
 
+FString UHotUpdateVersionManager::GetVersionDir(const FString& VersionString, EHotUpdatePlatform Platform, EHotUpdateAndroidTextureFormat AndroidTextureFormat)
+{
+	return FPaths::Combine(GetVersionRootDir(), VersionString, HotUpdateUtils::GetPlatformDirName(Platform, AndroidTextureFormat));
+}
+
 bool UHotUpdateVersionManager::VersionExists(const FString& VersionString, EHotUpdatePlatform Platform)
 {
 	FScopeLock Lock(&RegistryLock);

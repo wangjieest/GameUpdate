@@ -167,11 +167,10 @@ bool UHotUpdateAssetManager::GetPackageChunkIds(
 			return true;
 		}
 
-		// For non-whitelist packages: DO NOT override.
-		// Let the engine's default chunk assignment (from Super) decide.
-		// Engine resources, default materials, etc. will naturally stay in Chunk 0.
-		// Only explicitly whitelisted packages are forced to Chunk 0;
-		// everything else follows standard UE chunk rules.
+		// Non-whitelist packages: assign to Chunk 11 (hot update patch)
+		OutChunkList.Empty();
+		OutChunkList.Add(11);
+		return true;
 	}
 
 	// Return engine's default assignment

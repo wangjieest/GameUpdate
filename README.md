@@ -32,7 +32,8 @@ Unreal Engine 5.7 热更新（OTA 补丁）插件，支持 Pak/IoStore 打包、
 
 - Unreal Engine 5.7
 - Visual Studio 2022 / Rider
-- Windows 平台（当前）
+- Android SDK（Android 打包需要）
+- Windows / Android 平台
 
 ## 快速开始
 
@@ -126,11 +127,26 @@ UnrealEditor-Cmd GameUpdate -run=HotUpdate -mode=patch -version=1.0.1 -baseversi
 
 最小包模式用于构建"瘦身"首包，将 pakchunk1+ 资源分离到热更新目录，仅 pakchunk0 打包到最终安装包。
 
+> **注意**：最小包模式依赖 UAT Automation 脚本（`Build/AutomationScripts/StripExtraPakChunks.Automation.csproj`），
+> 该 `.automation.csproj` 文件必须与 `.Automation.cs` 源码一同存在，UAT 才能发现、编译并加载 `CustomStagingHandler`。
+
+**Windows 平台**：
+
 ```bash
 UnrealEditor-Cmd GameUpdate -run=HotUpdate -mode=base -version=1.0.0 \
     -platform=Windows \
     -minimal \
     -whitelist="/Game/UI;/Game/Startup"
+```
+
+**Android 平台**：
+
+```bash
+UnrealEditor-Cmd GameUpdate -run=HotUpdate -mode=base -version=1.0.0 \
+    -platform=Android \
+    -minimal \
+    -whitelist="/Game/UI;/Game/Startup" \
+    -textureformat=ASTC
 ```
 
 **最小包参数说明**：
@@ -139,6 +155,7 @@ UnrealEditor-Cmd GameUpdate -run=HotUpdate -mode=base -version=1.0.0 \
 |------|------|
 | `-minimal` | 启用最小包模式 |
 | `-whitelist=<paths>` | 白名单目录（分号分隔），必须打包到 Chunk 0 |
+| `-textureformat=<fmt>` | Android 纹理格式：ETC2、ASTC、DXT、Multi（Android 必需） |
 
 ## 分包功能
 
@@ -302,6 +319,9 @@ GameUpdate/
 │           └── Private/
 │               └── Widgets/         # Slate 面板
 └── Build/                           # 自动化脚本
+    └── AutomationScripts/           # UAT Automation 模块
+        ├── StripExtraPakChunks.Automation.cs     # CustomStagingHandler 源码
+        └── StripExtraPakChunks.Automation.csproj # UAT 模块项目文件（必须）
 ```
 
 ## FAQ
@@ -329,7 +349,7 @@ LogHotUpdateEditor=Verbose
 
 ### Q: 支持哪些平台？
 
-A: 当前支持 Windows 平台。移动端（Android/iOS）支持正在开发中。
+A: 当前支持 Windows 和 Android 平台。iOS 支持正在开发中。
 
 ### Q: 增量更新如何工作？
 
@@ -387,6 +407,16 @@ A: 在编辑器面板中配置 `DirectoryChunkRules`，或通过代码设置 `FH
 1. 检查 Chunk 的 `Priority` 设置（数值小的先加载）
 2. 确认依赖关系配置正确（父 Chunk 先于子 Chunk）
 3. 查看日志确认加载顺序
+
+### 最小包 StrpExtraPakChunks 未执行
+
+**症状**：最小包模式打包后，staging 目录中仍保留 pakchunk1+ 文件，未被移到热更输出目录
+
+**解决方案**：
+
+1. 确认 `Build/AutomationScripts/StripExtraPakChunks.Automation.csproj` 文件存在 — UAT 只识别 `.automation.csproj` 文件来加载项目 Automation 脚本，仅有 `.Automation.cs` 源码不会被编译加载
+2. 检查 UAT 日志中是否有 `Loading script DLL: ...StripExtraPakChunks.Automation.dll` — 如没有说明脚本未被加载
+3. 确认打包命令中传入了 `-ScriptsForProject=<.uproject路径>` 参数（由插件自动添加）
 
 ### 蓝图调用无响应
 

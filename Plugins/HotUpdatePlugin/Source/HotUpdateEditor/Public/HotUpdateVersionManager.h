@@ -121,6 +121,11 @@ public:
 	static FString GetVersionDir(const FString& VersionString, EHotUpdatePlatform Platform);
 
 	/**
+	 * 获取版本目录（考虑 Android 纹理格式后缀，如 Android_ASTC）
+	 */
+	static FString GetVersionDir(const FString& VersionString, EHotUpdatePlatform Platform, EHotUpdateAndroidTextureFormat AndroidTextureFormat);
+
+	/**
 	 * 检查版本是否存在
 	 */
 	bool VersionExists(const FString& VersionString, EHotUpdatePlatform Platform);

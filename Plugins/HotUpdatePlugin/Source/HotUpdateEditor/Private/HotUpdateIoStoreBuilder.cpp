@@ -163,7 +163,7 @@ bool UHotUpdateIoStoreBuilder::CreateIoStoreWithUnrealPak(
 	int64 TotalSize = 0;
 
 	if (!GenerateResponseFile(AssetPathToDiskPath, ResponseFilePath,
-		ValidFileCount, TotalSize, OutResult.ErrorMessage))
+		Config.CompressionFormat, ValidFileCount, TotalSize, OutResult.ErrorMessage))
 	{
 		CleanupTempDirectory(TempDir);
 		return false;
@@ -232,13 +232,14 @@ bool UHotUpdateIoStoreBuilder::PrepareTempDirectory(
 {
 	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
 
-	if (PlatformFile.DirectoryExists(*TempDir))
+	// 清空整个 IoStoreTemp 目录，只保留当前构建
+	FString IoStoreTempDir = FPaths::Combine(FPaths::ProjectIntermediateDir(), TEXT("IoStoreTemp"));
+	if (PlatformFile.DirectoryExists(*IoStoreTempDir))
 	{
-		PlatformFile.DeleteDirectoryRecursively(*TempDir);
+		PlatformFile.DeleteDirectoryRecursively(*IoStoreTempDir);
 	}
 
-	FString StagingDir = FPaths::Combine(TempDir, TEXT("Staging"));
-	if (!PlatformFile.CreateDirectoryTree(*StagingDir))
+	if (!PlatformFile.CreateDirectoryTree(*TempDir))
 	{
 		UE_LOG(LogHotUpdateEditor, Error, TEXT("无法创建临时目录: %s"), *TempDir);
 		OutErrorMessage = TEXT("无法创建临时目录");
@@ -378,6 +379,7 @@ FString UHotUpdateIoStoreBuilder::GetPakInternalPath(const FString& AssetPath, c
 bool UHotUpdateIoStoreBuilder::GenerateResponseFile(
 	const TMap<FString, FString>& AssetPathToDiskPath,
 	const FString& ResponseFilePath,
+	const FString& CompressionFormat,
 	int32& OutValidFileCount,
 	int64& OutTotalSize,
 	FString& OutErrorMessage)
@@ -416,7 +418,9 @@ bool UHotUpdateIoStoreBuilder::GenerateResponseFile(
 		FString UnixDiskPath = DiskPath;
 		UnixDiskPath.ReplaceCharInline('\\', '/');
 
-		ResponseContent += FString::Printf(TEXT("\"%s\" \"%s\"\n"), *UnixDiskPath, *PakInternalPath);
+		ResponseContent += (CompressionFormat != TEXT("None"))
+				? FString::Printf(TEXT("\"%s\" \"%s\" -compress\n"), *UnixDiskPath, *PakInternalPath)
+				: FString::Printf(TEXT("\"%s\" \"%s\"\n"), *UnixDiskPath, *PakInternalPath);
 
 		int64 FileSize = IFileManager::Get().FileSize(*DiskPath);
 		OutTotalSize += FileSize;
@@ -442,7 +446,9 @@ bool UHotUpdateIoStoreBuilder::GenerateResponseFile(
 				FString UnixCompanionDiskPath = CompanionDiskPath;
 				UnixCompanionDiskPath.ReplaceCharInline('\\', '/');
 
-				ResponseContent += FString::Printf(TEXT("\"%s\" \"%s\"\n"), *UnixCompanionDiskPath, *CompanionPakPath);
+				ResponseContent += (CompressionFormat != TEXT("None"))
+						? FString::Printf(TEXT("\"%s\" \"%s\" -compress\n"), *UnixCompanionDiskPath, *CompanionPakPath)
+						: FString::Printf(TEXT("\"%s\" \"%s\"\n"), *UnixCompanionDiskPath, *CompanionPakPath);
 
 				int64 CompanionSize = IFileManager::Get().FileSize(*CompanionDiskPath);
 				OutTotalSize += CompanionSize;

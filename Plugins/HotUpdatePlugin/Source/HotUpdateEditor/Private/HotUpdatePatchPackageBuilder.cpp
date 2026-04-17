@@ -142,8 +142,9 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 
 	TArray<FString> CurrentAssetPaths;
 	TMap<FString, FString> CurrentAssetDiskPaths;
+	TMap<FString, FString> CurrentAssetSourcePaths;
 
-	if (!CollectAssets( CurrentAssetPaths, CurrentAssetDiskPaths, ErrorMessage))
+	if (!CollectAssets( CurrentAssetPaths, CurrentAssetDiskPaths, CurrentAssetSourcePaths, ErrorMessage))
 	{
 		Result.bSuccess = false;
 		Result.ErrorMessage = ErrorMessage;
@@ -169,11 +170,16 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 
 		const FString& AssetPath = CurrentAssetPaths[i];
 		const FString* DiskPath = CurrentAssetDiskPaths.Find(AssetPath);
+		const FString* SourcePath = CurrentAssetSourcePaths.Find(AssetPath);
 
-		if (DiskPath && FPaths::FileExists(**DiskPath))
+		// 优先使用源文件路径计算 Hash（Cooked 文件每次 Cook 可能不同）
+		FString HashPath = (SourcePath && FPaths::FileExists(**SourcePath)) ? *SourcePath
+			: (DiskPath && FPaths::FileExists(**DiskPath)) ? *DiskPath : TEXT("");
+
+		if (!HashPath.IsEmpty())
 		{
-			CurrentAssetHashes.Add(AssetPath, UHotUpdateFileUtils::CalculateFileHash(*DiskPath));
-			CurrentAssetSizes.Add(AssetPath, IFileManager::Get().FileSize(**DiskPath));
+			CurrentAssetHashes.Add(AssetPath, UHotUpdateFileUtils::CalculateFileHash(HashPath));
+			CurrentAssetSizes.Add(AssetPath, IFileManager::Get().FileSize(*HashPath));
 		}
 		UpdateProgress(TEXT("计算资源 Hash"), AssetPath, i + 1, CurrentAssetPaths.Num());
 	}
@@ -268,8 +274,11 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 				FString DiskPath = GetAssetDiskPath(AssetPath, CookedPlatformDir);
 				if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 				{
-					CurrentAssetHashes.Add(AssetPath, UHotUpdateFileUtils::CalculateFileHash(*DiskPath));
-					CurrentAssetSizes.Add(AssetPath, IFileManager::Get().FileSize(*DiskPath));
+					// 优先使用源文件路径计算 Hash
+					FString SourcePath = GetAssetSourcePath(AssetPath);
+					FString HashPath = (!SourcePath.IsEmpty() && FPaths::FileExists(*SourcePath)) ? SourcePath : DiskPath;
+					CurrentAssetHashes.Add(AssetPath, UHotUpdateFileUtils::CalculateFileHash(HashPath));
+					CurrentAssetSizes.Add(AssetPath, IFileManager::Get().FileSize(*HashPath));
 					CurrentAssetDiskPaths.Add(AssetPath, DiskPath);
 					CurrentAssetPaths.AddUnique(AssetPath);
 				}
@@ -936,9 +945,10 @@ FHotUpdateDiffReport UHotUpdatePatchPackageBuilder::PreviewDiff(const FHotUpdate
 	// 收集当前资源
 	TArray<FString> CurrentAssetPaths;
 	TMap<FString, FString> CurrentAssetDiskPaths;
+	TMap<FString, FString> CurrentAssetSourcePaths;
 	FString ErrorMessage;
 
-	if (!CollectAssets( CurrentAssetPaths, CurrentAssetDiskPaths, ErrorMessage))
+	if (!CollectAssets( CurrentAssetPaths, CurrentAssetDiskPaths, CurrentAssetSourcePaths, ErrorMessage))
 	{
 		return Report;
 	}
@@ -948,9 +958,12 @@ FHotUpdateDiffReport UHotUpdatePatchPackageBuilder::PreviewDiff(const FHotUpdate
 	for (const FString& AssetPath : CurrentAssetPaths)
 	{
 		const FString* DiskPath = CurrentAssetDiskPaths.Find(AssetPath);
-		if (DiskPath && FPaths::FileExists(**DiskPath))
+		const FString* SourcePath = CurrentAssetSourcePaths.Find(AssetPath);
+		FString HashPath = (SourcePath && FPaths::FileExists(**SourcePath)) ? *SourcePath
+			: (DiskPath && FPaths::FileExists(**DiskPath)) ? *DiskPath : TEXT("");
+		if (!HashPath.IsEmpty())
 		{
-			CurrentAssetHashes.Add(AssetPath, UHotUpdateFileUtils::CalculateFileHash(*DiskPath));
+			CurrentAssetHashes.Add(AssetPath, UHotUpdateFileUtils::CalculateFileHash(HashPath));
 		}
 	}
 
@@ -1007,6 +1020,7 @@ bool UHotUpdatePatchPackageBuilder::ValidateConfig(const FHotUpdatePatchPackageC
 bool UHotUpdatePatchPackageBuilder::CollectAssets(
 	TArray<FString>& OutAssetPaths,
 	TMap<FString, FString>& OutAssetDiskPaths,
+	TMap<FString, FString>& OutAssetSourcePaths,
 	FString& OutErrorMessage)
 {
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -1088,6 +1102,13 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(
 		{
 			OutAssetPaths.Add(AssetPath);
 			OutAssetDiskPaths.Add(AssetPath, DiskPath);
+
+			// 同时收集源文件路径（用于 Hash 计算）
+			FString SourcePath = GetAssetSourcePath(AssetPath);
+			if (!SourcePath.IsEmpty())
+			{
+				OutAssetSourcePaths.Add(AssetPath, SourcePath);
+			}
 		}
 		else
 		{
@@ -1512,9 +1533,12 @@ bool UHotUpdatePatchPackageBuilder::GenerateManifest(
 			const FString* DiskPath = ChangedAssetDiskPaths.Find(AssetPath);
 			if (DiskPath)
 			{
-				int64 FileSize = IFileManager::Get().FileSize(**DiskPath);
-				FileObj->SetNumberField(TEXT("fileSize"), FileSize);
-				FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(*DiskPath));
+					// 优先使用源文件计算 Hash
+					FString SourcePath = GetAssetSourcePath(AssetPath);
+					FString HashPath = (!SourcePath.IsEmpty() && FPaths::FileExists(*SourcePath)) ? SourcePath : *DiskPath;
+					int64 FileSize = IFileManager::Get().FileSize(*HashPath);
+					FileObj->SetNumberField(TEXT("fileSize"), FileSize);
+					FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(HashPath));
 				FileObj->SetNumberField(TEXT("chunkId"), CurrentChunkId);
 				FileObj->SetStringField(TEXT("source"), TEXT("patch"));
 			}
@@ -1819,6 +1843,27 @@ FString UHotUpdatePatchPackageBuilder::GetAssetDiskPath(const FString& AssetPath
 	FString CookedAssetPath = FPaths::Combine(CookedPlatformDir, RelativePath + TEXT(".uasset"));
 	if (FPaths::FileExists(*CookedAssetPath))
 		return CookedAssetPath;
+
+	return TEXT("");
+}
+
+FString UHotUpdatePatchPackageBuilder::GetAssetSourcePath(const FString& AssetPath)
+{
+	FString ResolvedPath;
+	if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, ResolvedPath, TEXT("")))
+	{
+		return TEXT("");
+	}
+
+	// TryConvertLongPackageNameToFilename 返回相对路径如 ../../../GameUpdate/Content/UMG/uw_test_pak_1
+	// 转为绝对路径
+	FString AbsolutePath = FPaths::ConvertRelativePathToFull(ResolvedPath);
+
+	// 尝试 .umap 和 .uasset 扩展名
+	if (FPaths::FileExists(AbsolutePath + TEXT(".umap")))
+		return AbsolutePath + TEXT(".umap");
+	if (FPaths::FileExists(AbsolutePath + TEXT(".uasset")))
+		return AbsolutePath + TEXT(".uasset");
 
 	return TEXT("");
 }

@@ -925,8 +925,11 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 
 		TSharedPtr<FJsonObject> FileObj = MakeShareable(new FJsonObject);
 		FileObj->SetStringField(TEXT("filePath"), UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(AssetPath, HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform)));
-		FileObj->SetNumberField(TEXT("fileSize"), IFileManager::Get().FileSize(*DiskPath));
-		FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(DiskPath));
+			// 使用源文件计算 Hash，确保与热更包 Hash 比对一致
+			FString SourcePath = UHotUpdatePatchPackageBuilder::GetAssetSourcePath(AssetPath);
+			FString HashPath = (!SourcePath.IsEmpty() && FPaths::FileExists(*SourcePath)) ? SourcePath : DiskPath;
+			FileObj->SetNumberField(TEXT("fileSize"), IFileManager::Get().FileSize(*HashPath));
+			FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(HashPath));
 		FileObj->SetNumberField(TEXT("chunkId"), 0);
 		FileObj->SetNumberField(TEXT("priority"), 0);
 		FileObj->SetBoolField(TEXT("isCompressed"), true);
@@ -943,8 +946,11 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 
 		TSharedPtr<FJsonObject> FileObj = MakeShareable(new FJsonObject);
 		FileObj->SetStringField(TEXT("filePath"), UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(AssetPath, HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform)));
-		FileObj->SetNumberField(TEXT("fileSize"), IFileManager::Get().FileSize(*DiskPath));
-		FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(DiskPath));
+			// 使用源文件计算 Hash，确保与热更包 Hash 比对一致
+			FString PSourcePath = UHotUpdatePatchPackageBuilder::GetAssetSourcePath(AssetPath);
+			FString PHashPath = (!PSourcePath.IsEmpty() && FPaths::FileExists(*PSourcePath)) ? PSourcePath : DiskPath;
+			FileObj->SetNumberField(TEXT("fileSize"), IFileManager::Get().FileSize(*PHashPath));
+			FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(PHashPath));
 		FileObj->SetNumberField(TEXT("chunkId"), 11);
 		FileObj->SetNumberField(TEXT("priority"), 0);
 		FileObj->SetBoolField(TEXT("isCompressed"), true);

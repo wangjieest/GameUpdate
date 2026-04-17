@@ -92,6 +92,12 @@ public:
 	 */
 		static FString GetAssetDiskPath(const FString& AssetPath, const FString& CookedPlatformDir);
 
+	/**
+	 * 获取资源源文件磁盘路径（Content 目录下的 .uasset/.umap）
+	 * 用于 Hash 计算，避免 Cooked 文件因时间戳等原因 Hash 不稳定
+	 */
+	static FString GetAssetSourcePath(const FString& AssetPath);
+
 private:
 	/**
 	 * Cook 资源
@@ -113,6 +119,7 @@ private:
 	bool CollectAssets(
 		TArray<FString>& OutAssetPaths,
 		TMap<FString, FString>& OutAssetDiskPaths,
+		TMap<FString, FString>& OutAssetSourcePaths,
 		FString& OutErrorMessage);
 
 	/**

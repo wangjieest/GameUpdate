@@ -168,6 +168,7 @@ private:
 	bool GenerateResponseFile(
 		const TMap<FString, FString>& AssetPathToDiskPath,
 		const FString& ResponseFilePath,
+		const FString& CompressionFormat,
 		int32& OutValidFileCount,
 		int64& OutTotalSize,
 		FString& OutErrorMessage);

@@ -163,6 +163,34 @@ private:
 	FString GetPakInternalPath(const FString& AssetPath, const FString& DiskPath = TEXT(""));
 
 	/**
+	 * 确定资源文件的扩展名
+	 * 如果路径已有 UE 扩展名（.uasset/.umap/.uexp/.ubulk/.ubulk2），会从路径中剥离
+	 * @param InOutPakPath 包路径（输入/输出），已有 UE 扩展名时会被剥离
+	 * @param DiskPath 磁盘路径（用于回退获取扩展名）
+	 * @return 应追加的扩展名（不含点号，空表示不追加）
+	 */
+	FString DetermineAssetExtension(FString& InOutPakPath, const FString& DiskPath);
+
+	/**
+	 * 将虚拟包路径映射为 Pak 内部挂载路径
+	 * /Game/... -> ../../../{ProjectName}/Content/...
+	 * /Engine/... -> ../../../Engine/Content/...
+	 * 插件路径 -> 根据 FPackageName 解析结果映射
+	 * @param PakPath 虚拟包路径（不含扩展名，以 / 开头）
+	 * @return Pak 内部 Dest 路径（不含扩展名）
+	 */
+	FString MapToPakMountPath(const FString& PakPath);
+
+	/**
+	 * 将插件包路径映射为 Pak 内部挂载路径
+	 * 通过 FPackageName 解析实际文件路径，区分引擎插件和项目插件
+	 * @param PluginPakPath 插件包路径（如 /NNE/Foo）
+	 * @param ProjectName 项目名称
+	 * @return Pak 内部 Dest 路径
+	 */
+	FString MapPluginPathToPakMountPath(const FString& PluginPakPath, const FString& ProjectName);
+
+	/**
 	 * 生成响应文件
 	 */
 	bool GenerateResponseFile(

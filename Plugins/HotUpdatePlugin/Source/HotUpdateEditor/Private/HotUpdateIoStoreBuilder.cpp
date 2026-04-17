@@ -249,11 +249,110 @@ bool UHotUpdateIoStoreBuilder::PrepareTempDirectory(
 	return true;
 }
 
+FString UHotUpdateIoStoreBuilder::DetermineAssetExtension(FString& InOutPakPath, const FString& DiskPath)
+{
+	// 情况1：路径已有 UE 资源扩展名，剥离后返回
+	if (InOutPakPath.EndsWith(TEXT(".uasset")) || InOutPakPath.EndsWith(TEXT(".umap")) ||
+		InOutPakPath.EndsWith(TEXT(".uexp")) || InOutPakPath.EndsWith(TEXT(".ubulk")) ||
+		InOutPakPath.EndsWith(TEXT(".ubulk2")))
+	{
+		int32 DotIndex;
+		if (InOutPakPath.FindChar('.', DotIndex))
+		{
+			FString Extension = InOutPakPath.Mid(DotIndex + 1);
+			InOutPakPath = InOutPakPath.Left(DotIndex);
+			return Extension;
+		}
+	}
+
+	// 情况2：路径有非 UE 扩展名（如 .txt/.ini 等 Staged 文件），保留原始路径，不追加扩展名
+	FString PathExt = FPaths::GetExtension(InOutPakPath);
+	if (!PathExt.IsEmpty() && PathExt != TEXT("uasset") && PathExt != TEXT("umap"))
+	{
+		return TEXT("");
+	}
+
+	// 情况3：无扩展名，从磁盘路径获取
+	if (!DiskPath.IsEmpty())
+	{
+		FString Extension = FPaths::GetExtension(DiskPath);
+		if (!Extension.IsEmpty())
+		{
+			return Extension;
+		}
+	}
+
+	// 情况4：回退启发式，地图用 umap，其他用 uasset
+	if (InOutPakPath.Contains(TEXT("/Maps/")) || InOutPakPath.Contains(TEXT("/Map/")))
+	{
+		return TEXT("umap");
+	}
+	return TEXT("uasset");
+}
+
+FString UHotUpdateIoStoreBuilder::MapPluginPathToPakMountPath(const FString& PluginPakPath, const FString& ProjectName)
+{
+	// 尝试通过 FPackageName 解析实际文件路径
+	FString ResolvedPath;
+	if (!FPackageName::TryConvertLongPackageNameToFilename(PluginPakPath, ResolvedPath, TEXT("")))
+	{
+		UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetPakInternalPath: FPackageName 无法解析 %s，默认按引擎插件处理"), *PluginPakPath);
+		return FString::Printf(TEXT("../../../Engine/Plugins/%s"), *PluginPakPath.Mid(1));
+	}
+
+	// 规范化路径用于前缀比较
+	FString NormalizedResolved = ResolvedPath;
+	FPaths::NormalizeDirectoryName(NormalizedResolved);
+
+	FString NormalizedEngineDir = FPaths::EngineDir();
+	FPaths::NormalizeDirectoryName(NormalizedEngineDir);
+
+	FString NormalizedProjectDir = FPaths::ProjectDir();
+	FPaths::NormalizeDirectoryName(NormalizedProjectDir);
+
+	// 引擎插件：解析路径以引擎目录开头
+	if (NormalizedResolved.StartsWith(NormalizedEngineDir))
+	{
+		FString RelativePath = NormalizedResolved.RightChop(NormalizedEngineDir.Len());
+		return FString::Printf(TEXT("../../../Engine/%s"), *RelativePath);
+	}
+
+	// 项目插件：解析路径以项目目录开头
+	if (NormalizedResolved.StartsWith(NormalizedProjectDir))
+	{
+		FString RelativePath = NormalizedResolved.RightChop(NormalizedProjectDir.Len());
+		return FString::Printf(TEXT("../../../%s/%s"), *ProjectName, *RelativePath);
+	}
+
+	// 无法分类，按引擎插件处理
+	UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetPakInternalPath: 无法分类插件路径 %s，默认按引擎插件处理"), *PluginPakPath);
+	return FString::Printf(TEXT("../../../Engine/Plugins/%s"), *PluginPakPath.Mid(1));
+}
+
+FString UHotUpdateIoStoreBuilder::MapToPakMountPath(const FString& PakPath)
+{
+	FString ProjectName = FApp::GetProjectName();
+
+	// /Game/ 映射到项目 Content 目录
+	if (PakPath.StartsWith(TEXT("/Game/")))
+	{
+		return FString::Printf(TEXT("../../../%s/Content/%s"), *ProjectName, *PakPath.Mid(6));
+	}
+
+	// /Engine/ 映射到引擎 Content 目录
+	if (PakPath.StartsWith(TEXT("/Engine/")))
+	{
+		return FString::Printf(TEXT("../../../Engine/Content/%s"), *PakPath.Mid(9));
+	}
+
+	// 其他 / 开头的路径视为插件路径
+	return MapPluginPathToPakMountPath(PakPath, ProjectName);
+}
+
 FString UHotUpdateIoStoreBuilder::GetPakInternalPath(const FString& AssetPath, const FString& DiskPath)
 {
 	// 从 AssetPath（如 "/Game/Maps/Start"）转换为 Pak 内部路径（Dest 路径）
 	// UE5 标准 pak 的 Dest 路径格式: ../../../{ProjectName}/Content/...
-	// 例如 "/Game/Maps/Start" -> "../../../GameUpdate/Content/Maps/Start.umap"
 	// 这样 GetCommonRootPath 会计算出 mount point 为 "../../../"
 	// 与标准基础 pak 的 mount point 一致，运行时才能正确匹配文件路径
 
@@ -265,114 +364,13 @@ FString UHotUpdateIoStoreBuilder::GetPakInternalPath(const FString& AssetPath, c
 		PakPath = TEXT("/") + PakPath;
 	}
 
-	// ========== 步骤1：确定文件扩展名 ==========
-	FString Extension;
-	if (PakPath.EndsWith(TEXT(".uasset")) || PakPath.EndsWith(TEXT(".umap")) ||
-		PakPath.EndsWith(TEXT(".uexp")) || PakPath.EndsWith(TEXT(".ubulk")) ||
-		PakPath.EndsWith(TEXT(".ubulk2")))
-	{
-		// 已有扩展名，从路径中分离出基础包名用于后续挂载点解析
-		int32 DotIndex;
-		if (PakPath.FindChar('.', DotIndex))
-		{
-			Extension = PakPath.Mid(DotIndex + 1);
-			PakPath = PakPath.Left(DotIndex);
-		}
-	}
-	else
-	{
-		// 优先从磁盘路径获取实际扩展名
-		// Staged 文件（非 UE 资源，如 .txt/.ini）已有完整扩展名，不做分离
-		FString PathExt = FPaths::GetExtension(PakPath);
-		if (!PathExt.IsEmpty() && PathExt != TEXT("uasset") && PathExt != TEXT("umap"))
-		{
-			// 非 UE 资源扩展名，保留原始路径，Extension 留空避免步骤 3 追加
-			Extension = TEXT("");
-		}
-		else
-		{
-			if (!DiskPath.IsEmpty())
-			{
-				Extension = FPaths::GetExtension(DiskPath);
-			}
-			if (Extension.IsEmpty())
-			{
-				// 回退：地图用 .umap，其他用 .uasset
-				if (PakPath.Contains(TEXT("/Maps/")) || PakPath.Contains(TEXT("/Map/")))
-				{
-					Extension = TEXT("umap");
-				}
-				else
-				{
-					Extension = TEXT("uasset");
-				}
-			}
-		}
-	}
+	// 步骤1：确定文件扩展名（可能剥离路径中已有的 UE 扩展名）
+	FString Extension = DetermineAssetExtension(PakPath, DiskPath);
 
-	// ========== 步骤2：挂载点映射（不含扩展名） ==========
-	// 将虚拟路径 /Game/... 转换为标准 pak Dest 格式 ../../../{ProjectName}/Content/...
-	// /Game/ 映射到项目的 Content 目录
-	// /Engine/ 映射到引擎的 Content 目录
-	// 插件路径需要通过 FPackageName 解析，区分引擎插件和项目插件
-	FString ProjectName = FApp::GetProjectName();
-	if (PakPath.StartsWith(TEXT("/Game/")))
-	{
-		PakPath = FString::Printf(TEXT("../../../%s/Content/%s"), *ProjectName, *PakPath.Mid(6));
-	}
-	else if (PakPath.StartsWith(TEXT("/Engine/")))
-	{
-		PakPath = FString::Printf(TEXT("../../../Engine/Content/%s"), *PakPath.Mid(9));
-	}
-	else if (PakPath.StartsWith(TEXT("/")) && !PakPath.StartsWith(TEXT("/Game/")) && !PakPath.StartsWith(TEXT("/Engine/")))
-	{
-		// 插件路径：使用 FPackageName 解析实际文件路径，区分引擎插件与项目插件
-		// 引擎插件: /NNE/X -> ../../../Engine/Plugins/Runtime/NNE/Content/X
-		// 项目插件: /MyPlugin/X -> ../../../{ProjectName}/Plugins/MyPlugin/Content/X
-		FString ResolvedPath;
-		if (FPackageName::TryConvertLongPackageNameToFilename(PakPath, ResolvedPath, TEXT("")))
-		{
-			FString NormalizedResolved = ResolvedPath;
-			FPaths::NormalizeDirectoryName(NormalizedResolved);
+	// 步骤2：挂载点映射
+	PakPath = MapToPakMountPath(PakPath);
 
-			FString NormalizedEngineDir = FPaths::EngineDir();
-			FPaths::NormalizeDirectoryName(NormalizedEngineDir);
-
-			FString NormalizedProjectDir = FPaths::ProjectDir();
-			FPaths::NormalizeDirectoryName(NormalizedProjectDir);
-
-			if (NormalizedResolved.StartsWith(NormalizedEngineDir))
-			{
-				// 引擎插件：提取相对于引擎目录的路径
-				// Resolved: E:/Engine/Plugins/Runtime/NNE/Content/X
-				// Relative: Plugins/Runtime/NNE/Content/X
-				FString RelativePath = NormalizedResolved.RightChop(NormalizedEngineDir.Len());
-				PakPath = FString::Printf(TEXT("../../../Engine/%s"), *RelativePath);
-			}
-			else if (NormalizedResolved.StartsWith(NormalizedProjectDir))
-			{
-				// 项目插件：提取相对于项目目录的路径
-				// Resolved: E:/Project/Plugins/MyPlugin/Content/X
-				// Relative: Plugins/MyPlugin/Content/X
-				FString RelativePath = NormalizedResolved.RightChop(NormalizedProjectDir.Len());
-				PakPath = FString::Printf(TEXT("../../../%s/%s"), *ProjectName, *RelativePath);
-			}
-			else
-			{
-				// 回退：无法分类，按引擎插件处理
-				PakPath = FString::Printf(TEXT("../../../Engine/Plugins/%s"), *PakPath.Mid(1));
-				UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetPakInternalPath: 无法分类插件路径 %s，默认按引擎插件处理"), *AssetPath);
-			}
-		}
-		else
-		{
-			// FPackageName 解析失败，回退到引擎插件映射
-			PakPath = FString::Printf(TEXT("../../../Engine/Plugins/%s"), *PakPath.Mid(1));
-			UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetPakInternalPath: FPackageName 无法解析 %s，默认按引擎插件处理"), *AssetPath);
-		}
-	}
-
-	// ========== 步骤3：追加扩展名 ==========
+	// 步骤3：追加扩展名
 	if (!Extension.IsEmpty())
 	{
 		PakPath += TEXT(".") + Extension;

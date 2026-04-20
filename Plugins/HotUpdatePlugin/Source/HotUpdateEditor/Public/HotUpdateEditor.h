@@ -24,6 +24,7 @@ struct FHotUpdatePendingData
 		InitialTab = 0;
 		UassetFilePaths.Empty();
 		NonAssetFilePaths.Empty();
+		bNeedReRegisterSpawner = false;
 	}
 };
 

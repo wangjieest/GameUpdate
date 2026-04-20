@@ -92,11 +92,6 @@ private:
 		TMap<FString, FHotUpdateManifestEntry>& OutEntries);
 
 	/**
-	 * 获取Pak文件内容列表
-	 */
-	TArray<FString> GetPakContentList(const FString& PakPath);
-
-	/**
 	 * 从Pak文件中提取文件名到SHA1 Hash的映射
 	 */
 	TMap<FString, FString> GetPakFileHashes(const FString& PakPath);

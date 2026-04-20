@@ -163,10 +163,12 @@ void UHotUpdateBaseVersionBuilder::BuildBaseVersion(const FHotUpdateBaseVersionB
 	{
 		// 在后台线程执行构建（编辑器模式）
 		// 通过 lambda 按值捕获 SafeConfig，确保后台线程使用独立的数据副本
-		BuildTask = Async(EAsyncExecution::Thread, [this, SafeConfig]()
+		BuildTask = Async(EAsyncExecution::Thread, [WeakThis = TWeakObjectPtr<UHotUpdateBaseVersionBuilder>(this), SafeConfig]()
 		{
-			CurrentConfig = SafeConfig;
-			ExecuteBuildInternal(false);
+			if (!WeakThis.IsValid()) return;
+			auto* Self = WeakThis.Get();
+			Self->CurrentConfig = SafeConfig;
+			Self->ExecuteBuildInternal(false);
 		});
 	}
 }
@@ -239,9 +241,10 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 		}
 		else
 		{
-			AsyncTask(ENamedThreads::GameThread, [this, Result]()
+			AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakObjectPtr<UHotUpdateBaseVersionBuilder>(this), Result]()
 			{
-				OnBuildComplete.Broadcast(Result);
+				if (!WeakThis.IsValid()) return;
+				WeakThis.Get()->OnBuildComplete.Broadcast(Result);
 			});
 		}
 		return;
@@ -258,9 +261,10 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 		}
 		else
 		{
-			AsyncTask(ENamedThreads::GameThread, [this, Result]()
+			AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakObjectPtr<UHotUpdateBaseVersionBuilder>(this), Result]()
 			{
-				OnBuildComplete.Broadcast(Result);
+				if (!WeakThis.IsValid()) return;
+				WeakThis.Get()->OnBuildComplete.Broadcast(Result);
 			});
 		}
 		return;
@@ -280,9 +284,10 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 		}
 		else
 		{
-			AsyncTask(ENamedThreads::GameThread, [this, Result]()
+			AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakObjectPtr<UHotUpdateBaseVersionBuilder>(this), Result]()
 			{
-				OnBuildComplete.Broadcast(Result);
+				if (!WeakThis.IsValid()) return;
+				WeakThis.Get()->OnBuildComplete.Broadcast(Result);
 			});
 		}
 		return;
@@ -301,9 +306,14 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 	else
 	{
 		TPromise<bool> SaveResultPromise;
-		AsyncTask(ENamedThreads::GameThread, [this, &SaveResultPromise]()
+		AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakObjectPtr<UHotUpdateBaseVersionBuilder>(this), &SaveResultPromise]()
 		{
-			bool bSuccess = SaveResourceHashesInGameThread();
+			if (!WeakThis.IsValid())
+			{
+				SaveResultPromise.SetValue(false);
+				return;
+			}
+			bool bSuccess = WeakThis.Get()->SaveResourceHashesInGameThread();
 			SaveResultPromise.SetValue(bSuccess);
 		});
 		TFuture<bool> SaveFuture = SaveResultPromise.GetFuture();
@@ -332,9 +342,10 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 	}
 	else
 	{
-		AsyncTask(ENamedThreads::GameThread, [this, Result]()
+		AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakObjectPtr<UHotUpdateBaseVersionBuilder>(this), Result]()
 		{
-			OnBuildComplete.Broadcast(Result);
+			if (!WeakThis.IsValid()) return;
+			WeakThis.Get()->OnBuildComplete.Broadcast(Result);
 		});
 	}
 }
@@ -559,7 +570,7 @@ void UHotUpdateBaseVersionBuilder::PreComputeChunkMapping()
 	IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
 
 	// 2. 收集所有资产路径
-	TArray<FString> AllAssetPaths = CollectAllAssetPaths(AssetRegistry);
+	TArray<FString> AllAssetPaths = CollectAllAssetPaths();
 
 	// 3. 应用最小包过滤（得到白名单和热更资产）
 	TArray<FString> PatchAssetPaths;
@@ -666,7 +677,7 @@ bool UHotUpdateBaseVersionBuilder::ExecuteUATPackage(const FString& UATCommand, 
 	FMonitoredProcess Process(ExecutablePath, CommandLine, true);  // true = 隐藏窗口
 
 	// 设置输出回调
-	Process.OnOutput().BindLambda([this](const FString& Output)
+	Process.OnOutput().BindLambda([](const FString& Output)
 	{
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("%s"), *Output);
 	});
@@ -788,10 +799,10 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 		return false;
 	}
 
-	// 4. 从 AssetRegistry 收集资源路径
+	// 4. 收集资源路径
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
-	TArray<FString> AssetPaths = CollectAllAssetPaths(AssetRegistry);
+	TArray<FString> AssetPaths = CollectAllAssetPaths();
 
 	// 5. 应用最小包过滤（拆分白名单 / 热更资源）
 	TArray<FString> PatchAssetPaths;
@@ -803,7 +814,7 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 	TArray<FHotUpdateResolvedAssetInfo> PatchAssets = ResolveAssetInfo(PatchAssetPaths, CookedPlatformDir);
 
 	// 6.5. 收集 DirectoriesToAlwaysStageAsUFS/NonUFS 中的 Staged 文件
-	TArray<FString> StagedPakPaths = CollectStagedFilePaths();
+	TArray<FString> StagedPakPaths = FHotUpdatePackagingSettingsHelper::CollectStagedFilePaths();
 	for (const FString& PakPath : StagedPakPaths)
 	{
 		FString RelativePath = PakPath.RightChop(5); // 去掉 "Game/"
@@ -983,94 +994,18 @@ bool UHotUpdateBaseVersionBuilder::BuildManifestJson(
 	return true;
 }
 
-TArray<FString> UHotUpdateBaseVersionBuilder::CollectAllAssetPaths(IAssetRegistry* AssetRegistry) const
+TArray<FString> UHotUpdateBaseVersionBuilder::CollectAllAssetPaths() const
 {
-	// 强制刷新 AssetRegistry，确保依赖数据完整（Commandlet 模式下缓存可能不包含完整依赖）
-	AssetRegistry->SearchAllAssets(true);
+	FHotUpdatePackagingSettingsResult SettingsResult =
+		FHotUpdatePackagingSettingsHelper::ParsePackagingSettings(true);
 
-	// 等待搜索完成
-	while (AssetRegistry->IsLoadingAssets())
+	if (SettingsResult.Errors.Num() > 0)
 	{
-		FPlatformProcess::Sleep(0.1f);
+		UE_LOG(LogHotUpdateEditor, Error, TEXT("解析打包设置失败: %s"),
+			*FString::Join(SettingsResult.Errors, TEXT("\n")));
 	}
 
-	// 从打包设置收集资源
-	TArray<FString> AllAssetPaths;
-
-	// 1. 收集 /Game 目录下的所有资源（作为基础）
-	FARFilter GameFilter;
-	GameFilter.PackagePaths.Add(FName(TEXT("/Game")));
-	GameFilter.bRecursivePaths = true;
-	TArray<FAssetData> GameAssets;
-	AssetRegistry->GetAssets(GameFilter, GameAssets);
-	for (const FAssetData& AssetData : GameAssets)
-	{
-		AllAssetPaths.Add(AssetData.PackageName.ToString());
-	}
-
-	// 2. 收集项目打包设置中的资源
-	if (const UProjectPackagingSettings* PackagingSettings = GetDefault<UProjectPackagingSettings>())
-	{
-		// 收集 MapsToCook
-		for (const FFilePath& MapPath : PackagingSettings->MapsToCook)
-		{
-			FString NormalizedPath = MapPath.FilePath;
-			if (!NormalizedPath.StartsWith(TEXT("/")))
-			{
-				NormalizedPath = TEXT("/") + NormalizedPath;
-			}
-			AllAssetPaths.Add(NormalizedPath);
-		}
-
-		// 收集 DirectoriesToAlwaysCook
-		for (const FDirectoryPath& Directory : PackagingSettings->DirectoriesToAlwaysCook)
-		{
-			FString Path = Directory.Path;
-			if (!Path.StartsWith(TEXT("/")))
-			{
-				Path = TEXT("/") + Path;
-			}
-
-			FARFilter Filter;
-			Filter.PackagePaths.Add(FName(*Path));
-			Filter.bRecursivePaths = true;
-			TArray<FAssetData> DirAssets;
-			AssetRegistry->GetAssets(Filter, DirAssets);
-			for (const FAssetData& AssetData : DirAssets)
-			{
-				AllAssetPaths.Add(AssetData.PackageName.ToString());
-			}
-		}
-	}
-
-	// 3. 收集资源依赖（Hard + Soft，因为 Cooker 会同时打包软引用资源）
-	TSet<FString> UniqueAssetPaths(AllAssetPaths);
-	for (const FString& AssetPath : AllAssetPaths)
-	{
-		TArray<FName> Dependencies;
-		if (AssetRegistry->GetDependencies(FName(*AssetPath), Dependencies, UE::AssetRegistry::EDependencyCategory::Package))
-		{
-			for (const FName& Dep : Dependencies)
-			{
-				FString DepStr = Dep.ToString();
-				// 包含 /Game（项目）、/Engine（引擎）、插件路径（如 /NNE/、/Water/）
-				// 排除 /Script/ 路径（C++ 类型引用，不是资产）
-				if (DepStr.StartsWith(TEXT("/Game/")) || DepStr.StartsWith(TEXT("/Engine/")) ||
-					(DepStr.StartsWith(TEXT("/")) && !DepStr.StartsWith(TEXT("/Script/"))))
-				{
-					UniqueAssetPaths.Add(DepStr);
-				}
-			}
-		}
-	}
-
-	return UniqueAssetPaths.Array();
-}
-
-TArray<FString> UHotUpdateBaseVersionBuilder::CollectStagedFilePaths() const
-{
-	// 委托通用方法获取 Staged 文件的 pak 内路径列表
-	return FHotUpdatePackagingSettingsHelper::CollectStagedFilePaths();
+	return SettingsResult.AssetPaths;
 }
 
 void UHotUpdateBaseVersionBuilder::ApplyMinimalPackageFilter(
@@ -1127,10 +1062,10 @@ TArray<FHotUpdateResolvedAssetInfo> UHotUpdateBaseVersionBuilder::ResolveAssetIn
 		}
 		else
 		{
-			// 插件资源路径解析失败时记录警告
+			// 引擎插件资源可能未参与 Cook 或被重命名，不属于热更范围，降级为 Verbose
 			if (!AssetPath.StartsWith(TEXT("/Game/")) && !AssetPath.StartsWith(TEXT("/Engine/")) && !AssetPath.StartsWith(TEXT("/Script/")))
 			{
-				UE_LOG(LogHotUpdateEditor, Warning, TEXT("插件资源磁盘路径解析失败: AssetPath=%s, DiskPath=%s"),
+				UE_LOG(LogHotUpdateEditor, Verbose, TEXT("插件资源磁盘路径解析失败: AssetPath=%s, DiskPath=%s"),
 					*AssetPath, DiskPath.IsEmpty() ? TEXT("(empty)") : *DiskPath);
 			}
 		}
@@ -1226,9 +1161,10 @@ void UHotUpdateBaseVersionBuilder::UpdateProgress(const FString& Stage, float Pe
 	Progress.StatusMessage = Message;
 
 	// 在游戏线程广播
-	AsyncTask(ENamedThreads::GameThread, [this, Progress]()
+	AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakObjectPtr<UHotUpdateBaseVersionBuilder>(this), Progress]()
 	{
-		OnBuildProgress.Broadcast(Progress);
+		if (!WeakThis.IsValid()) return;
+		WeakThis.Get()->OnBuildProgress.Broadcast(Progress);
 	});
 }
 

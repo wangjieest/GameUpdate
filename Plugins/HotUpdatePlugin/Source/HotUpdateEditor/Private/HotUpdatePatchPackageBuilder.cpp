@@ -809,32 +809,6 @@ void UHotUpdatePatchPackageBuilder::BuildPatchPackageAsync(const FHotUpdatePatch
 
 	ConfigForThread.AssetPaths = SettingsResult.AssetPaths;
 
-	// 如果需要依赖解析，在游戏线程中完成（GetDependencies 也要求游戏线程）
-	if (ConfigForThread.bIncludeDependencies)
-	{
-		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-		IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
-
-		TSet<FString> UniquePaths(ConfigForThread.AssetPaths);
-		for (const FString& AssetPath : ConfigForThread.AssetPaths)
-		{
-			TArray<FName> Dependencies;
-			if (AssetRegistry->GetDependencies(FName(*AssetPath), Dependencies))
-			{
-				for (const FName& Dep : Dependencies)
-				{
-					FString DepStr = Dep.ToString();
-					if (DepStr.StartsWith(TEXT("/Game/")) || DepStr.StartsWith(TEXT("/Engine/")) ||
-						(DepStr.StartsWith(TEXT("/")) && !DepStr.StartsWith(TEXT("/Script/"))))
-					{
-						UniquePaths.Add(DepStr);
-					}
-				}
-			}
-		}
-		ConfigForThread.AssetPaths = UniquePaths.Array();
-	}
-
 	// 标记预收集完成，后台线程无需再访问 AssetRegistry
 	ConfigForThread.PreCollectedAssetPaths = ConfigForThread.AssetPaths;
 
@@ -1079,31 +1053,6 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(
 		}
 		AllAssetPaths = SettingsResult.AssetPaths;
 
-		// 依赖解析（同步路径在游戏线程，安全）
-		if (CurrentConfig.bIncludeDependencies)
-		{
-			FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-			IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
-
-			TSet<FString> UniquePaths(AllAssetPaths);
-			for (const FString& AssetPath : AllAssetPaths)
-			{
-				TArray<FName> Dependencies;
-				if (AssetRegistry->GetDependencies(FName(*AssetPath), Dependencies))
-				{
-					for (const FName& Dep : Dependencies)
-					{
-						FString DepStr = Dep.ToString();
-						if (DepStr.StartsWith(TEXT("/Game/")) || DepStr.StartsWith(TEXT("/Engine/")) ||
-							(DepStr.StartsWith(TEXT("/")) && !DepStr.StartsWith(TEXT("/Script/"))))
-						{
-							UniquePaths.Add(DepStr);
-						}
-					}
-				}
-			}
-			AllAssetPaths = UniquePaths.Array();
-		}
 	}
 
 	// 收集 DirectoriesToAlwaysStageAsUFS/NonUFS 中的 Staged 文件
@@ -1996,57 +1945,4 @@ bool UHotUpdatePatchPackageBuilder::LoadBaseContainers(
 	return OutContainers.Num() > 0;
 }
 
-int32 UHotUpdatePatchPackageBuilder::CopyContainerFiles(
-	const FString& SourceDir,
-	const FString& DestDir,
-	const TArray<FHotUpdateContainerInfo>& Containers)
-{
-	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
-	int32 CopiedCount = 0;
-
-	// 确保目标目录存在
-	if (!PlatformFile.DirectoryExists(*DestDir))
-	{
-		PlatformFile.CreateDirectoryTree(*DestDir);
-	}
-
-	for (const FHotUpdateContainerInfo& Container : Containers)
-	{
-		// 复制 .utoc 文件
-		FString SourceUtocPath = FPaths::Combine(SourceDir, Container.UtocPath);
-		FString DestUtocPath = FPaths::Combine(DestDir, Container.UtocPath);
-
-		if (FPaths::FileExists(*SourceUtocPath))
-		{
-			if (PlatformFile.CopyFile(*DestUtocPath, *SourceUtocPath))
-			{
-				CopiedCount++;
-				UE_LOG(LogHotUpdateEditor, Log, TEXT("复制容器: %s -> %s"), *SourceUtocPath, *DestUtocPath);
-
-				// 复制对应的 .ucas 文件（如果存在）
-				if (!Container.UcasPath.IsEmpty())
-				{
-					FString SourceUcasPath = FPaths::Combine(SourceDir, Container.UcasPath);
-					FString DestUcasPath = FPaths::Combine(DestDir, Container.UcasPath);
-
-					if (FPaths::FileExists(*SourceUcasPath))
-					{
-						PlatformFile.CopyFile(*DestUcasPath, *SourceUcasPath);
-						UE_LOG(LogHotUpdateEditor, Log, TEXT("复制 ucas: %s"), *DestUcasPath);
-					}
-				}
-			}
-			else
-			{
-				UE_LOG(LogHotUpdateEditor, Warning, TEXT("复制容器失败: %s"), *SourceUtocPath);
-			}
-		}
-		else
-		{
-			UE_LOG(LogHotUpdateEditor, Warning, TEXT("源容器文件不存在: %s"), *SourceUtocPath);
-		}
-	}
-
-	return CopiedCount;
-}
 

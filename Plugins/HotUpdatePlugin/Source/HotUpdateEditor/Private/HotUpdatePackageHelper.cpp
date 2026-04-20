@@ -210,7 +210,13 @@ FString FHotUpdatePackageHelper::GetAssetDiskPath(const FString& AssetPath, cons
 		if (bIsProjectPlugin)
 			RelativePath = FString(FApp::GetProjectName()) / Suffix;
 		else
-			RelativePath = TEXT("Engine") / Suffix;
+		{
+			// Suffix 已包含 "Engine/" 前缀时（引擎插件），直接使用
+			if (Suffix.StartsWith(TEXT("Engine/")))
+				RelativePath = Suffix;
+			else
+				RelativePath = TEXT("Engine") / Suffix;
+		}
 
 		if (PluginName.IsEmpty())
 		{
@@ -272,7 +278,12 @@ FString FHotUpdatePackageHelper::GetAssetDiskPath(const FString& AssetPath, cons
 				if (bIsProjectPlugin)
 					RelativePath = FString(FApp::GetProjectName()) / PathUnderProject;
 				else
-					RelativePath = TEXT("Engine") / PathUnderProject;
+				{
+					if (PathUnderProject.StartsWith(TEXT("Engine/")))
+						RelativePath = PathUnderProject;
+					else
+						RelativePath = TEXT("Engine") / PathUnderProject;
+				}
 			}
 			else
 			{

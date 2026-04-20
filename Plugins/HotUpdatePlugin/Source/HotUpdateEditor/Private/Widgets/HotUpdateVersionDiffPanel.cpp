@@ -578,23 +578,6 @@ void SHotUpdateVersionDiffPanel::GenerateTreeNodes()
 	}
 	}
 
-TSharedPtr<FDiffTreeNode> SHotUpdateVersionDiffPanel::FindOrCreateFolderNode(const FString& Path)
-{
-	if (Path.IsEmpty()) return nullptr;
-
-	if (AllNodes.Contains(Path))
-	{
-		return AllNodes[Path];
-	}
-
-	TSharedPtr<FDiffTreeNode> Node = MakeShareable(new FDiffTreeNode);
-	Node->Name = FPaths::GetCleanFilename(Path);
-	Node->FullPath = Path;
-	Node->bIsFolder = true;
-
-	return Node;
-}
-
 const FSlateBrush* SHotUpdateVersionDiffPanel::GetTreeNodeIcon(TSharedPtr<FDiffTreeNode> Node) const
 {
 	if (!Node.IsValid()) return nullptr;
@@ -736,6 +719,7 @@ void SHotUpdateVersionDiffPanel::UpdateDetailsPanel(TSharedPtr<FDiffTreeNode> No
 
 void SHotUpdateVersionDiffPanel::ApplyFilter(const FString& FilterText)
 {
+	// TODO: 实现实际的过滤逻辑，当前仅刷新树视图
 	DiffTreeView->RequestTreeRefresh();
 }
 

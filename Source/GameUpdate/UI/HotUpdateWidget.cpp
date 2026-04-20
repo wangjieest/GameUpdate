@@ -288,12 +288,6 @@ void UHotUpdateWidget::UpdateVersionInfo() const
 		LatestVersionText->SetText(FText::FromString(VerStr));
 	}
 
-	// 更新版本说明
-	if (ReleaseNotesText)
-	{
-		ReleaseNotesText->SetText(FText::FromString(LatestVer.ReleaseNotes));
-	}
-
 	// 更新下载大小（从进度信息获取）
 	if (UpdateSizeText)
 	{

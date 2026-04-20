@@ -4,7 +4,6 @@
 #include "HotUpdate.h"
 #include "Core/HotUpdateSettings.h"
 #include "Misc/CommandLine.h"
-#include "Misc/Parse.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "HAL/PlatformFileManager.h"

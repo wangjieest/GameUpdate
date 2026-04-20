@@ -228,15 +228,9 @@ private:
 		TArray<TSharedPtr<FJsonValue>>& OutChunksArray) const;
 
 	/**
-	 * 从 AssetRegistry 收集所有被打包的资源路径
+	 * 从打包设置收集所有被打包的资源路径（含依赖解析）
 	 */
-	TArray<FString> CollectAllAssetPaths(IAssetRegistry* AssetRegistry) const;
-
-	/**
-	 * 收集 DirectoriesToAlwaysStageAsUFS/NonUFS 中的文件
-	 * 这些是非 UE 资产文件，不在 AssetRegistry 中，但会被 UAT 打包到 pak
-	 */
-	TArray<FString> CollectStagedFilePaths() const;
+	TArray<FString> CollectAllAssetPaths() const;
 
 	/**
 	 * 应用最小包过滤，拆分白名单资源和热更资源

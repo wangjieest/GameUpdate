@@ -39,9 +39,6 @@ protected:
 	/// 轮询下载进度
 	void PollDownloadProgress();
 
-	/// 处理单个任务完成
-	void HandleTaskCompleted(TSharedPtr<FAndroidDownloadTask> Task, bool bSuccess);
-
 	/// 通过 JNI 向 DownloadManager 提交下载请求，返回 downloadId（-1 表示失败）
 	int64 EnqueueDownloadRequest(const FString& Url, const FString& SavePath, int64 ResumeOffset = 0);
 
@@ -52,6 +49,11 @@ protected:
 	void RemoveDownload(int64 DownloadId);
 
 private:
+#if PLATFORM_ANDROID
+	/// 通过 JNI 获取 DownloadManager 实例
+	jobject GetDownloadManagerJNI(JNIEnv* Env);
+#endif
+
 	/// 最大并发数
 	int32 MaxConcurrentDownloads;
 

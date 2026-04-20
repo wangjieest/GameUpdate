@@ -411,20 +411,7 @@ void UHotUpdateAndroidDownloader::PollDownloadProgress()
 	}
 	CurrentProgress.DownloadedBytes = TotalDownloaded;
 
-	double CurrentTime = FPlatformTime::Seconds();
-	double ElapsedTime = CurrentTime - LastProgressUpdateTime;
-	if (ElapsedTime > 0.5)
-	{
-		int64 BytesSinceLastUpdate = TotalDownloaded - LastDownloadedBytes;
-		CurrentProgress.DownloadSpeed = (float)(BytesSinceLastUpdate / ElapsedTime);
-		if (CurrentProgress.DownloadSpeed > 0)
-		{
-			int64 RemainingBytes = CurrentProgress.TotalBytes - TotalDownloaded;
-			CurrentProgress.RemainingTime = (float)(RemainingBytes / CurrentProgress.DownloadSpeed);
-		}
-		LastProgressUpdateTime = CurrentTime;
-		LastDownloadedBytes = TotalDownloaded;
-	}
+	UpdateProgressCalculation(TotalDownloaded, CurrentProgress, LastProgressUpdateTime, LastDownloadedBytes);
 	OnProgress.Broadcast(CurrentProgress);
 
 	// 所有任务完成
@@ -452,9 +439,42 @@ void UHotUpdateAndroidDownloader::PollDownloadProgress()
 #endif // PLATFORM_ANDROID
 }
 
-void UHotUpdateAndroidDownloader::HandleTaskCompleted(TSharedPtr<FAndroidDownloadTask> Task, bool bSuccess)
+#if PLATFORM_ANDROID
+jobject UHotUpdateAndroidDownloader::GetDownloadManagerJNI(JNIEnv* Env)
 {
+	jclass ContextClass = Env->FindClass("android/content/Context");
+	if (!ContextClass)
+	{
+		UE_LOG(LogHotUpdate, Error, TEXT("Failed to find Context class"));
+		return nullptr;
+	}
+
+	jmethodID GetSystemServiceMethod = Env->GetMethodID(ContextClass, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;");
+	jstring ServiceName = Env->NewStringUTF("download");
+	jobject Activity = FAndroidApplication::GetGameActivityThis();
+
+	if (!Activity || !GetSystemServiceMethod)
+	{
+		UE_LOG(LogHotUpdate, Error, TEXT("Failed to get activity or getSystemService method"));
+		Env->DeleteLocalRef(ServiceName);
+		Env->DeleteLocalRef(ContextClass);
+		return nullptr;
+	}
+
+	jobject DownloadManagerObj = Env->CallObjectMethod(Activity, GetSystemServiceMethod, ServiceName);
+	Env->DeleteLocalRef(ServiceName);
+	Env->DeleteLocalRef(ContextClass);
+
+	if (!DownloadManagerObj || Env->ExceptionCheck())
+	{
+		UE_LOG(LogHotUpdate, Error, TEXT("Failed to get DownloadManager instance"));
+		Env->ExceptionClear();
+		return nullptr;
+	}
+
+	return DownloadManagerObj;
 }
+#endif
 
 int64 UHotUpdateAndroidDownloader::EnqueueDownloadRequest(const FString& Url, const FString& SavePath, int64 ResumeOffset)
 {
@@ -469,33 +489,9 @@ int64 UHotUpdateAndroidDownloader::EnqueueDownloadRequest(const FString& Url, co
 	}
 
 	// 获取 DownloadManager 实例
-	jclass ContextClass = Env->FindClass("android/content/Context");
-	if (!ContextClass)
+	jobject DownloadManagerObj = GetDownloadManagerJNI(Env);
+	if (!DownloadManagerObj)
 	{
-		UE_LOG(LogHotUpdate, Error, TEXT("Failed to find Context class"));
-		return Result;
-	}
-
-	jstring DownloadServiceStr = Env->NewStringUTF("download");
-	jmethodID GetSystemServiceMethod = Env->GetMethodID(ContextClass, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;");
-
-	jobject Activity = FAndroidApplication::GetGameActivityThis();
-	if (!Activity || !GetSystemServiceMethod)
-	{
-		UE_LOG(LogHotUpdate, Error, TEXT("Failed to get activity or getSystemService method"));
-		Env->DeleteLocalRef(DownloadServiceStr);
-		Env->DeleteLocalRef(ContextClass);
-		return Result;
-	}
-
-	jobject DownloadManagerObj = Env->CallObjectMethod(Activity, GetSystemServiceMethod, DownloadServiceStr);
-	Env->DeleteLocalRef(DownloadServiceStr);
-
-	if (!DownloadManagerObj || Env->ExceptionCheck())
-	{
-		UE_LOG(LogHotUpdate, Error, TEXT("Failed to get DownloadManager instance"));
-		Env->ExceptionClear();
-		Env->DeleteLocalRef(ContextClass);
 		return Result;
 	}
 
@@ -506,7 +502,6 @@ int64 UHotUpdateAndroidDownloader::EnqueueDownloadRequest(const FString& Url, co
 	{
 		UE_LOG(LogHotUpdate, Error, TEXT("Failed to find Request or Uri class"));
 		Env->DeleteLocalRef(DownloadManagerObj);
-		Env->DeleteLocalRef(ContextClass);
 		return Result;
 	}
 
@@ -522,7 +517,6 @@ int64 UHotUpdateAndroidDownloader::EnqueueDownloadRequest(const FString& Url, co
 		Env->DeleteLocalRef(RequestClass);
 		Env->DeleteLocalRef(UriClass);
 		Env->DeleteLocalRef(DownloadManagerObj);
-		Env->DeleteLocalRef(ContextClass);
 		return Result;
 	}
 
@@ -537,7 +531,6 @@ int64 UHotUpdateAndroidDownloader::EnqueueDownloadRequest(const FString& Url, co
 		Env->DeleteLocalRef(RequestClass);
 		Env->DeleteLocalRef(UriClass);
 		Env->DeleteLocalRef(DownloadManagerObj);
-		Env->DeleteLocalRef(ContextClass);
 		return Result;
 	}
 
@@ -616,8 +609,7 @@ int64 UHotUpdateAndroidDownloader::EnqueueDownloadRequest(const FString& Url, co
 	Env->DeleteLocalRef(UriClass);
 	Env->DeleteLocalRef(DownloadManagerClass);
 	Env->DeleteLocalRef(DownloadManagerObj);
-	Env->DeleteLocalRef(ContextClass);
-
+	
 	return Result;
 #else
 	UE_LOG(LogHotUpdate, Error, TEXT("EnqueueDownloadRequest called on non-Android platform"));
@@ -634,24 +626,7 @@ bool UHotUpdateAndroidDownloader::QueryDownloadStatus(int64 DownloadId, int32& O
 		return false;
 	}
 
-	jclass ContextClass = Env->FindClass("android/content/Context");
-	if (!ContextClass) return false;
-
-	jstring DownloadServiceStr = Env->NewStringUTF("download");
-	jmethodID GetSystemServiceMethod = Env->GetMethodID(ContextClass, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;");
-	jobject Activity = FAndroidApplication::GetGameActivityThis();
-
-	if (!Activity || !GetSystemServiceMethod)
-	{
-		Env->DeleteLocalRef(DownloadServiceStr);
-		Env->DeleteLocalRef(ContextClass);
-		return false;
-	}
-
-	jobject DownloadManagerObj = Env->CallObjectMethod(Activity, GetSystemServiceMethod, DownloadServiceStr);
-	Env->DeleteLocalRef(DownloadServiceStr);
-	Env->DeleteLocalRef(ContextClass);
-
+	jobject DownloadManagerObj = GetDownloadManagerJNI(Env);
 	if (!DownloadManagerObj) return false;
 
 	jclass QueryClass = Env->FindClass("android/app/DownloadManager\$Query");
@@ -732,24 +707,7 @@ void UHotUpdateAndroidDownloader::RemoveDownload(int64 DownloadId)
 	JNIEnv* Env = FAndroidApplication::GetJavaEnv();
 	if (!Env) return;
 
-	jclass ContextClass = Env->FindClass("android/content/Context");
-	if (!ContextClass) return;
-
-	jstring DownloadServiceStr = Env->NewStringUTF("download");
-	jmethodID GetSystemServiceMethod = Env->GetMethodID(ContextClass, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;");
-	jobject Activity = FAndroidApplication::GetGameActivityThis();
-
-	if (!Activity || !GetSystemServiceMethod)
-	{
-		Env->DeleteLocalRef(DownloadServiceStr);
-		Env->DeleteLocalRef(ContextClass);
-		return;
-	}
-
-	jobject DownloadManagerObj = Env->CallObjectMethod(Activity, GetSystemServiceMethod, DownloadServiceStr);
-	Env->DeleteLocalRef(DownloadServiceStr);
-	Env->DeleteLocalRef(ContextClass);
-
+	jobject DownloadManagerObj = GetDownloadManagerJNI(Env);
 	if (!DownloadManagerObj) return;
 
 	jclass DownloadManagerClass = Env->GetObjectClass(DownloadManagerObj);

@@ -7,7 +7,6 @@
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
-#include "Widgets/Notifications/SNotificationList.h"
 #include "HotUpdateEditorTypes.h"
 #include "HotUpdateBaseVersionBuilder.h"
 
@@ -49,12 +48,6 @@ private:
 
 	/** 选择输出目录 */
 	FReply OnBrowseOutputDirectory();
-
-	/** 刷新 UI 状态 */
-	void RefreshBuildState();
-
-	/** 显示通知 */
-	void ShowNotification(const FText& Message, SNotificationItem::ECompletionState State);
 
 	/** 平台选择 */
 	TSharedRef<SWidget> GeneratePlatformComboBoxItem(TSharedPtr<EHotUpdatePlatform> InItem);

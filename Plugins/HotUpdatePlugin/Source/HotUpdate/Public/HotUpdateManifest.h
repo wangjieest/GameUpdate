@@ -26,12 +26,6 @@ struct HOTUPDATE_API FHotUpdateManifest
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
 	FHotUpdateVersionInfo VersionInfo;
 
-	/// === 基础包字段 ===
-
-	/// Chunk 定义列表（包含依赖关系）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	TArray<FHotUpdateChunkInfo> Chunks;
-
 	/// === 更新包字段 ===
 
 	/// 基础版本号（仅更新包有效）
@@ -43,10 +37,6 @@ struct HOTUPDATE_API FHotUpdateManifest
 	/// 容器文件列表（.utoc/.ucas）
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
 	TArray<FHotUpdateContainerInfo> Containers;
-
-	/// 所有文件条目
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	TArray<FHotUpdateManifestEntry> Files;
 
 	FHotUpdateManifest()
 		: ManifestVersion(2)

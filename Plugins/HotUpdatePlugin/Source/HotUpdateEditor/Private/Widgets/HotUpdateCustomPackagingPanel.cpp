@@ -5,12 +5,12 @@
 #include "HotUpdateEditor.h"
 #include "HotUpdateEditorSettings.h"
 #include "HotUpdateEditorStyle.h"
+#include "HotUpdateNotificationHelper.h"
 #include "HotUpdateCustomPackageBuilder.h"
 #include "Styling/AppStyle.h"
 #include "Framework/Application/SlateApplication.h"
 #include "DesktopPlatformModule.h"
 #include "IDesktopPlatform.h"
-#include "HAL/PlatformProcess.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableText.h"
 #include "Widgets/Input/SCheckBox.h"
@@ -24,7 +24,6 @@
 #include "Widgets/Notifications/SProgressBar.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/SListView.h"
-#include "Framework/Notifications/NotificationManager.h"
 #include "Styling/CoreStyle.h"
 #include "Misc/Paths.h"
 
@@ -829,14 +828,14 @@ void SHotUpdateCustomPackagingPanel::OnPackagingComplete(const FHotUpdatePackage
 		StatusTextBlock->SetColorAndOpacity(FHotUpdateEditorStyle::GetSuccessColor());
 		ProgressBar->SetPercent(1.0f);
 
-		ShowSuccessNotification(FText::FromString(SuccessMsg), FPaths::GetPath(Result.OutputFilePath));
+		FHotUpdateNotificationHelper::ShowSuccessNotification(FText::FromString(SuccessMsg), FPaths::GetPath(Result.OutputFilePath));
 	}
 	else
 	{
 		StatusTextBlock->SetText(FText::FromString(Result.ErrorMessage));
 		StatusTextBlock->SetColorAndOpacity(FHotUpdateEditorStyle::GetErrorColor());
 
-		ShowErrorNotification(FText::FromString(Result.ErrorMessage));
+		FHotUpdateNotificationHelper::ShowErrorNotification(FText::FromString(Result.ErrorMessage));
 	}
 
 	ProgressTextBlock->SetText(FText::GetEmpty());
@@ -1120,82 +1119,6 @@ EVisibility SHotUpdateCustomPackagingPanel::GetAndroidTextureFormatVisibility() 
 		return EVisibility::Visible;
 	}
 	return EVisibility::Collapsed;
-}
-
-// ===== 通知 =====
-
-void SHotUpdateCustomPackagingPanel::ShowNotification(const FText& Message, SNotificationItem::ECompletionState State)
-{
-	TSharedPtr<SNotificationItem> NotificationItem = FSlateNotificationManager::Get().AddNotification(FNotificationInfo(Message));
-	if (NotificationItem.IsValid())
-	{
-		NotificationItem->SetCompletionState(State);
-	}
-}
-
-void SHotUpdateCustomPackagingPanel::ShowSuccessNotification(const FText& Message, const FString& OutputPath)
-{
-	FNotificationInfo Info(Message);
-	Info.ExpireDuration = 5.0f;
-	Info.bUseSuccessFailIcons = true;
-	Info.Image = FAppStyle::GetBrush("Icons.SuccessWithColor");
-	Info.Hyperlink = FSimpleDelegate::CreateLambda([OutputPath]() { FPlatformProcess::ExploreFolder(*OutputPath); });
-	Info.HyperlinkText = LOCTEXT("OpenOutputDir", "打开输出目录");
-
-	TSharedPtr<SNotificationItem> NotificationItem = FSlateNotificationManager::Get().AddNotification(Info);
-	if (NotificationItem.IsValid())
-	{
-		NotificationItem->SetCompletionState(SNotificationItem::CS_Success);
-	}
-}
-
-void SHotUpdateCustomPackagingPanel::ShowErrorNotification(const FText& Message)
-{
-	FNotificationInfo Info(Message);
-	Info.ExpireDuration = 8.0f;
-	Info.bUseSuccessFailIcons = true;
-	Info.Image = FAppStyle::GetBrush("Icons.ErrorWithColor");
-	Info.ButtonDetails.Add(FNotificationButtonInfo(
-		LOCTEXT("ViewLog", "查看日志"),
-		LOCTEXT("ViewLogTooltip", "打开输出日志窗口"),
-		FSimpleDelegate::CreateLambda([]() { FGlobalTabmanager::Get()->TryInvokeTab(FName("OutputLog")); }),
-		SNotificationItem::ECompletionState::CS_Fail
-	));
-
-	TSharedPtr<SNotificationItem> NotificationItem = FSlateNotificationManager::Get().AddNotification(Info);
-	if (NotificationItem.IsValid())
-	{
-		NotificationItem->SetCompletionState(SNotificationItem::CS_Fail);
-	}
-}
-
-void SHotUpdateCustomPackagingPanel::ShowProgressNotification(const FText& Message, bool bShowCancelButton)
-{
-	if (ProgressNotification.IsValid())
-	{
-		ProgressNotification->ExpireAndFadeout();
-		ProgressNotification.Reset();
-	}
-
-	FNotificationInfo Info(Message);
-	Info.bFireAndForget = false;
-	Info.ExpireDuration = 0.0f;
-
-	if (bShowCancelButton)
-	{
-		Info.ButtonDetails.Add(FNotificationButtonInfo(
-			LOCTEXT("Cancel", "取消"),
-			LOCTEXT("CancelTooltip", "取消当前打包操作"),
-			FSimpleDelegate::CreateLambda([this]() { OnCancelClicked(); }),
-			SNotificationItem::ECompletionState::CS_Pending
-		));
-	}
-
-	ProgressNotification = FSlateNotificationManager::Get().AddNotification(Info);
-	if (ProgressNotification.IsValid())
-	{
-		ProgressNotification->SetCompletionState(SNotificationItem::CS_Pending);
-	}
 }
 
 // ===== 清理 =====

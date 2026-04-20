@@ -419,12 +419,11 @@ bool UHotUpdateManager::ApplyUpdate()
 			PlatformFile.FindFilesRecursively(UtocFiles, *PakDir, TEXT(".utoc"));
 
 			int32 MountedCount = 0;
+			int32 PakOrder = PakManager->CalculatePakOrder(LatestVersion);
 
 			// 挂载 .pak 文件
 			for (const FString& PakFile : PakFiles)
 			{
-				FHotUpdatePakMetadata Metadata = PakManager->ParsePakMetadata(PakFile);
-				int32 PakOrder = PakManager->CalculatePakOrder(Metadata.PakName, Metadata.Version);
 				if (PakManager->MountPak(PakFile, PakOrder))
 				{
 					MountedCount++;
@@ -439,9 +438,7 @@ bool UHotUpdateManager::ApplyUpdate()
 			// 挂载 IoStore 容器（.utoc）
 			for (const FString& UtocFile : UtocFiles)
 			{
-				FHotUpdatePakMetadata UtocMetadata = PakManager->ParsePakMetadata(UtocFile);
-				int32 UtocPakOrder = PakManager->CalculatePakOrder(UtocMetadata.PakName, UtocMetadata.Version);
-				if (PakManager->MountPak(UtocFile, UtocPakOrder))
+				if (PakManager->MountPak(UtocFile, PakOrder))
 				{
 					MountedCount++;
 					UE_LOG(LogHotUpdate, Log, TEXT("Mounted IoStore container: %s"), *UtocFile);

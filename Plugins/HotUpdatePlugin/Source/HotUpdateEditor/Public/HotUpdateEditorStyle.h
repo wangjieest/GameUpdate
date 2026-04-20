@@ -4,8 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "Styling/SlateColor.h"
-#include "Styling/SlateTypes.h"
-#include "Brushes/SlateImageBrush.h"
 
 struct FSlateBrush;
 class FSlateStyleSet;

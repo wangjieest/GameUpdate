@@ -18,8 +18,7 @@ enum class EHotUpdateState : uint8
 	Paused          UMETA(DisplayName = "Paused"),
 	Installing      UMETA(DisplayName = "Installing"),
 	Success         UMETA(DisplayName = "Success"),
-	Failed          UMETA(DisplayName = "Failed"),
-	Rollback        UMETA(DisplayName = "Rollback")
+	Failed          UMETA(DisplayName = "Failed")
 };
 
 /**
@@ -35,8 +34,7 @@ enum class EHotUpdateError : uint8
 	ParseError          UMETA(DisplayName = "Parse Error"),
 	InvalidVersion      UMETA(DisplayName = "Invalid Version"),
 	DownloadFailed      UMETA(DisplayName = "Download Failed"),
-	VerificationFailed  UMETA(DisplayName = "Verification Failed"),
-	MountFailed         UMETA(DisplayName = "Mount Failed")
+	VerificationFailed  UMETA(DisplayName = "Verification Failed")
 };
 
 /**
@@ -47,18 +45,6 @@ enum class EHotUpdatePackageKind : uint8
 {
 	Base            UMETA(DisplayName = "基础包"),
 	Patch           UMETA(DisplayName = "更新包")
-};
-
-/**
- * 文件变更类型
- */
-UENUM(BlueprintType)
-enum class EHotUpdateFileChangeType : uint8
-{
-	Added           UMETA(DisplayName = "Added"),
-	Modified        UMETA(DisplayName = "Modified"),
-	Deleted         UMETA(DisplayName = "Deleted"),
-	Unchanged       UMETA(DisplayName = "Unchanged")
 };
 
 /**
@@ -106,10 +92,6 @@ struct HOTUPDATE_API FHotUpdateVersionInfo
 	/// 发布时间戳
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
 	int64 Timestamp;
-
-	/// 更新说明
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	FString ReleaseNotes;
 
 	/// 比较版本号
 	bool operator>(const FHotUpdateVersionInfo& Other) const
@@ -237,33 +219,6 @@ struct HOTUPDATE_API FHotUpdateProgress
 };
 
 /**
- * Chunk 定义（运行时）
- */
-USTRUCT(BlueprintType)
-struct HOTUPDATE_API FHotUpdateChunkInfo
-{
-	GENERATED_BODY()
-
-	/// Chunk ID
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk")
-	int32 ChunkId;
-
-	/// Chunk 名称
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk")
-	FString ChunkName;
-
-	/// 加载优先级
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk")
-	int32 Priority;
-
-	FHotUpdateChunkInfo()
-		: ChunkId(-1)
-		, Priority(0)
-	{
-	}
-};
-
-/**
  * IoStore 容器文件信息
  */
 USTRUCT(BlueprintType)
@@ -334,32 +289,6 @@ struct HOTUPDATE_API FHotUpdateContainerInfo
 	friend uint32 GetTypeHash(const FHotUpdateContainerInfo& Container)
 	{
 		return GetTypeHash(Container.ChunkId);
-	}
-};
-
-/**
- * 单个文件信息
- */
-USTRUCT(BlueprintType)
-struct HOTUPDATE_API FHotUpdateFileInfo
-{
-	GENERATED_BODY()
-
-	/// 文件相对路径
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	FString FilePath;
-
-	/// 文件大小（字节）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	int64 FileSize;
-
-	/// 文件 Hash (SHA1)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HotUpdate")
-	FString FileHash;
-
-	FHotUpdateFileInfo()
-		: FileSize(0)
-	{
 	}
 };
 

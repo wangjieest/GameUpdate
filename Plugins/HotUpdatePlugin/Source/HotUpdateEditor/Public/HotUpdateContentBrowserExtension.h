@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "ContentBrowserModule.h"
 #include "HotUpdateEditorTypes.h"
 
 class FHotUpdateContentBrowserExtension
@@ -20,4 +21,10 @@ private:
 
 	/** 获取选中的资源路径 */
 	static TArray<FString> GetSelectedAssetPaths(const TArray<struct FAssetData>& SelectedAssets);
+
+	/** 路径视图菜单扩展 */
+	static FContentBrowserMenuExtender_SelectedPaths PathViewExtender;
+
+	/** 资产视图菜单扩展 */
+	static FContentBrowserMenuExtender_SelectedAssets AssetViewExtender;
 };

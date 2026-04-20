@@ -47,7 +47,6 @@ public:
 	/** 设置要打包的非资产文件路径（转发给 CustomPackagingPanel） */
 	void SetNonAssetFilePaths(const TArray<FString>& InPaths);
 
-	/** 设置打包类型（转发给 CustomPackagingPanel） */
 	/** 创建默认标签布局 */
 	static TSharedRef<FTabManager::FLayout> CreateDefaultLayout();
 
@@ -98,6 +97,4 @@ private:
 
 	/** 缓存的非资产文件路径 */
 	TArray<FString> CachedNonAssetFilePaths;
-
-	/** 缓存的打包类型 */
 };

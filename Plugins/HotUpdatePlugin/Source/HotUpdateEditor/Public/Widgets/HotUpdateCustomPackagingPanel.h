@@ -104,12 +104,6 @@ private:
 	/** 从UI更新打包配置 */
 	void UpdatePackageConfigFromUI();
 
-	/** 显示通知 */
-	void ShowNotification(const FText& Message, SNotificationItem::ECompletionState State);
-	void ShowSuccessNotification(const FText& Message, const FString& OutputPath);
-	void ShowErrorNotification(const FText& Message);
-	void ShowProgressNotification(const FText& Message, bool bShowCancelButton);
-
 private:
 	/** 父窗口 */
 	TSharedPtr<SWindow> ParentWindow;

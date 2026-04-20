@@ -32,9 +32,6 @@ struct HOTUPDATE_API FHotUpdatePakMetadata
 	UPROPERTY(BlueprintReadOnly, Category = "HotUpdate")
 	bool bIsMounted;
 
-	UPROPERTY(BlueprintReadOnly, Category = "HotUpdate")
-	FString EncryptionKeyGuid;
-
 	/// 版本信息
 	UPROPERTY(BlueprintReadOnly, Category = "HotUpdate")
 	FHotUpdateVersionInfo Version;
@@ -89,41 +86,6 @@ struct HOTUPDATE_API FHotUpdatePakEntry
 		, Offset(0)
 		, bIsCompressed(false)
 		, bIsEncrypted(false)
-	{
-	}
-};
-
-/**
- * 加密密钥信息
- */
-USTRUCT(BlueprintType)
-struct HOTUPDATE_API FHotUpdateEncryptionKey
-{
-	GENERATED_BODY()
-
-	/// 密钥 GUID
-	UPROPERTY(BlueprintReadOnly, Category = "Encryption")
-	FGuid KeyGuid;
-
-	/// 加密密钥（十六进制字符串）
-	UPROPERTY(BlueprintReadOnly, Category = "Encryption")
-	FString Key;
-
-	/// 密钥名称（可选）
-	UPROPERTY(BlueprintReadOnly, Category = "Encryption")
-	FString KeyName;
-
-	/// 密钥是否有效
-	bool IsValid() const { return KeyGuid.IsValid() && !Key.IsEmpty(); }
-
-	FHotUpdateEncryptionKey()
-	{
-	}
-
-	FHotUpdateEncryptionKey(const FGuid& InGuid, const FString& InKey, const FString& InName = TEXT(""))
-		: KeyGuid(InGuid)
-		, Key(InKey)
-		, KeyName(InName)
 	{
 	}
 };

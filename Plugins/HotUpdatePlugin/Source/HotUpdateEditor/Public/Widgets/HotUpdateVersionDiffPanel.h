@@ -63,9 +63,6 @@ private:
 	/** 生成树节点 */
 	void GenerateTreeNodes();
 
-	/** 查找或创建目录节点 */
-	TSharedPtr<FDiffTreeNode> FindOrCreateFolderNode(const FString& Path);
-
 	/** 获取树节点图标 */
 	const FSlateBrush* GetTreeNodeIcon(TSharedPtr<FDiffTreeNode> Node) const;
 

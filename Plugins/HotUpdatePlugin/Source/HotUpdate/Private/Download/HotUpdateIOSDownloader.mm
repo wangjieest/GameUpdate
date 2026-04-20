@@ -581,20 +581,7 @@ void UHotUpdateIOSDownloader::UpdateProgress()
 	}
 	CurrentProgress.DownloadedBytes = TotalDownloaded;
 
-	double CurrentTime = FPlatformTime::Seconds();
-	double ElapsedTime = CurrentTime - LastProgressUpdateTime;
-	if (ElapsedTime > 0.5)
-	{
-		int64 BytesSinceLastUpdate = TotalDownloaded - LastDownloadedBytes;
-		CurrentProgress.DownloadSpeed = (float)(BytesSinceLastUpdate / ElapsedTime);
-		if (CurrentProgress.DownloadSpeed > 0)
-		{
-			int64 RemainingBytes = CurrentProgress.TotalBytes - TotalDownloaded;
-			CurrentProgress.RemainingTime = (float)(RemainingBytes / CurrentProgress.DownloadSpeed);
-		}
-		LastProgressUpdateTime = CurrentTime;
-		LastDownloadedBytes = TotalDownloaded;
-	}
+	UpdateProgressCalculation(TotalDownloaded, CurrentProgress, LastProgressUpdateTime, LastDownloadedBytes);
 	OnProgress.Broadcast(CurrentProgress);
 
 	if (PendingTasks.Num() == 0 && ActiveTasks.Num() == 0)
@@ -627,6 +614,3 @@ void UHotUpdateIOSDownloader::UpdateProgress()
 #endif // PLATFORM_IOS
 }
 
-void UHotUpdateIOSDownloader::HandleTaskCompleted(const FString& SavePath, bool bSuccess)
-{
-}

@@ -11,7 +11,7 @@
  *
  * 定义统一的下载接口，平台特定子类重写虚方法实现各自的下载机制。
  * 由于 UE UHT 不支持纯虚 UFUNCTION，所有 UFUNCTION 提供安全的默认实现（日志警告 + 空操作）。
- * AddDownloadTasks / AddContainerDownloadTasks 在基类中提供默认实现（遍历调用 AddDownloadTask），
+ * AddContainerDownloadTasks 在基类中提供默认实现（遍历调用 AddDownloadTask），
  * 子类只需重写 AddDownloadTask 即可自动获得批量添加能力。
  */
 UCLASS(Abstract, BlueprintType, Blueprintable)
@@ -29,10 +29,6 @@ public:
 	/// 添加单个下载任务
 	UFUNCTION(BlueprintCallable, Category = "HotUpdate|Download")
 	virtual void AddDownloadTask(const FString& Url, const FString& SavePath, int64 ExpectedSize = 0, const FString& InExpectedHash = TEXT(""));
-
-	/// 批量添加下载任务（默认实现遍历调用 AddDownloadTask）
-	UFUNCTION(BlueprintCallable, Category = "HotUpdate|Download")
-	virtual void AddDownloadTasks(const TArray<FHotUpdateFileInfo>& Files, const FString& BaseUrl, const FString& SaveDir);
 
 	/// 批量添加容器下载任务，IoStore 容器（默认实现遍历调用 AddDownloadTask）
 	UFUNCTION(BlueprintCallable, Category = "HotUpdate|Download")
@@ -92,4 +88,9 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "HotUpdate|Download", meta = (DisplayName = "Create Downloader For Platform"))
 	static UHotUpdateDownloaderBase* CreateDownloader(UObject* Outer);
+
+protected:
+	/// 更新进度计算（速度和剩余时间）
+	void UpdateProgressCalculation(int64 TotalDownloaded, FHotUpdateProgress& InOutProgress,
+		double& InOutLastProgressUpdateTime, int64& InOutLastDownloadedBytes, float UpdateInterval = 0.5f);
 };

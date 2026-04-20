@@ -86,19 +86,22 @@ void UHotUpdateIoStoreBuilder::BuildIoStoreContainerAsync(
 	bIsBuilding = true;
 	bIsCancelled = false;
 
-	BuildTask = Async(EAsyncExecution::Thread, [this, AssetPathToDiskPath, OutputPath, Config]()
+	BuildTask = Async(EAsyncExecution::Thread, [WeakThis = TWeakObjectPtr<UHotUpdateIoStoreBuilder>(this), AssetPathToDiskPath, OutputPath, Config]()
 	{
+		if (!WeakThis.IsValid()) return;
+		auto* Self = WeakThis.Get();
 		FHotUpdateIoStoreResult Result;
-		bool bSuccess = CreateIoStoreWithUnrealPak(AssetPathToDiskPath, OutputPath, Config, Result);
+		bool bSuccess = Self->CreateIoStoreWithUnrealPak(AssetPathToDiskPath, OutputPath, Config, Result);
 
 		Result.bSuccess = bSuccess;
 		Result.FileCount = AssetPathToDiskPath.Num();
 
-		bIsBuilding = false;
+		Self->bIsBuilding = false;
 
-		AsyncTask(ENamedThreads::GameThread, [this, Result]()
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, Result]()
 		{
-			OnComplete.Broadcast(Result);
+			if (!WeakThis.IsValid()) return;
+			WeakThis.Get()->OnComplete.Broadcast(Result);
 		});
 	});
 }

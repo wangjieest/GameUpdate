@@ -26,12 +26,6 @@ public:
 	/// 添加下载任务
 	virtual void AddDownloadTask(const FString& Url, const FString& SavePath, int64 ExpectedSize = 0, const FString& InExpectedHash = TEXT("")) override;
 
-	/// 批量添加下载任务
-	virtual void AddDownloadTasks(const TArray<FHotUpdateFileInfo>& Files, const FString& BaseUrl, const FString& SaveDir) override;
-
-	/// 批量添加容器下载任务（IoStore 容器）
-	virtual void AddContainerDownloadTasks(const TArray<FHotUpdateContainerInfo>& Containers, const FString& BaseUrl, const FString& SaveDir) override;
-
 	/// 开始下载
 	virtual void StartDownload() override;
 

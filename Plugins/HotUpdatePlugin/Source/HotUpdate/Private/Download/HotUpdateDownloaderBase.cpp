@@ -26,18 +26,6 @@ void UHotUpdateDownloaderBase::AddDownloadTask(const FString& Url, const FString
 	UE_LOG(LogHotUpdate, Warning, TEXT("UHotUpdateDownloaderBase::AddDownloadTask called on base class. Override in platform-specific subclass."));
 }
 
-void UHotUpdateDownloaderBase::AddDownloadTasks(const TArray<FHotUpdateFileInfo>& Files, const FString& BaseUrl, const FString& SaveDir)
-{
-	// 共享实现：遍历调用 AddDownloadTask，子类只需重写 AddDownloadTask 即可
-	for (const FHotUpdateFileInfo& File : Files)
-	{
-		FString FullUrl = BaseUrl / File.FilePath;
-		FString SavePath = SaveDir / File.FilePath;
-		AddDownloadTask(FullUrl, SavePath, File.FileSize, File.FileHash);
-	}
-	UE_LOG(LogHotUpdate, Log, TEXT("Added %d download tasks"), Files.Num());
-}
-
 void UHotUpdateDownloaderBase::AddContainerDownloadTasks(const TArray<FHotUpdateContainerInfo>& Containers, const FString& BaseUrl, const FString& SaveDir)
 {
 	// 共享实现：遍历调用 AddDownloadTask，子类只需重写 AddDownloadTask 即可
@@ -95,6 +83,28 @@ bool UHotUpdateDownloaderBase::IsDownloading() const
 bool UHotUpdateDownloaderBase::IsPaused() const
 {
 	return false;
+}
+
+void UHotUpdateDownloaderBase::UpdateProgressCalculation(int64 TotalDownloaded, FHotUpdateProgress& InOutProgress,
+	double& InOutLastProgressUpdateTime, int64& InOutLastDownloadedBytes, float UpdateInterval)
+{
+	double CurrentTime = FPlatformTime::Seconds();
+	double ElapsedTime = CurrentTime - InOutLastProgressUpdateTime;
+
+	if (ElapsedTime >= UpdateInterval)
+	{
+		int64 BytesSinceLastUpdate = TotalDownloaded - InOutLastDownloadedBytes;
+		InOutProgress.DownloadSpeed = (float)(BytesSinceLastUpdate / ElapsedTime);
+
+		if (InOutProgress.DownloadSpeed > 0)
+		{
+			int64 RemainingBytes = InOutProgress.TotalBytes - TotalDownloaded;
+			InOutProgress.RemainingTime = (float)(RemainingBytes / InOutProgress.DownloadSpeed);
+		}
+
+		InOutLastProgressUpdateTime = CurrentTime;
+		InOutLastDownloadedBytes = TotalDownloaded;
+	}
 }
 
 // == 工厂函数 ==

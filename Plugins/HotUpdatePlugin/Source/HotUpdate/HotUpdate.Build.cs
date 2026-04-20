@@ -14,19 +14,17 @@ public class HotUpdate : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
-			"InputCore",
 			"PakFile",
 			"Json",
 			"JsonUtilities",
-			"DeveloperSettings",
-			"AssetRegistry"
+			"DeveloperSettings"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
 			"Projects",
-			"ApplicationCore",
-			"HTTP"
+			"HTTP",
+			"AssetRegistry"
 		});
 
 		// Android 平台依赖

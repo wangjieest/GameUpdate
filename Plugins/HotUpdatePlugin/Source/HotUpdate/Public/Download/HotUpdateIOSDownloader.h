@@ -42,10 +42,7 @@ protected:
 	/// 更新进度
 	void UpdateProgress();
 
-	/// 处理单个任务完成（由 Session Wrapper 回调）
-	void HandleTaskCompleted(const FString& SavePath, bool bSuccess);
-
-private:
+	private:
 	/// 最大并发数
 	int32 MaxConcurrentDownloads;
 

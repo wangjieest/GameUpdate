@@ -7,6 +7,18 @@
 #include "Core/HotUpdatePakTypes.h"
 #include "HotUpdateEditorTypes.generated.h"
 
+/**
+ * 文件变更类型
+ */
+UENUM(BlueprintType)
+enum class EHotUpdateFileChangeType : uint8
+{
+	Added           UMETA(DisplayName = "Added"),
+	Modified        UMETA(DisplayName = "Modified"),
+	Deleted         UMETA(DisplayName = "Deleted"),
+	Unchanged       UMETA(DisplayName = "Unchanged")
+};
+
 class UHotUpdatePatchPackageBuilder;
 
 
@@ -1092,7 +1104,7 @@ struct HOTUPDATEEDITOR_API FHotUpdateCustomPackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Android")
 	EHotUpdateAndroidTextureFormat AndroidTextureFormat = EHotUpdateAndroidTextureFormat::ASTC;
 
-		/// Pak 挂载优先级（容器名 _n_P 中的 n，0=默认_P，数字越大优先级越阛）
+		/// Pak 挂载优先级（容器名 _n_P 中的 n，0=默认_P，数字越大优先级越高）
 		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging", meta = (ClampMin = "0"))
 		int32 PakPriority = 10;
 	};

@@ -104,12 +104,6 @@ private:
 		TMap<FString, FString>& OutFilesHash,
 		TMap<FString, int64>& OutFilesSize);
 
-	/** 复制容器文件到输出目录 */
-	int32 CopyContainerFiles(
-		const FString& SourceDir,
-		const FString& DestDir,
-		const TArray<FHotUpdateContainerInfo>& Containers);
-
 	/** 生成 Manifest */
 	bool GenerateManifest(
 		const FString& ManifestPath,

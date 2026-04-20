@@ -3,6 +3,7 @@
 #include "Widgets/HotUpdateBaseVersionPanel.h"
 #include "HotUpdateEditor.h"
 #include "HotUpdateEditorStyle.h"
+#include "HotUpdateNotificationHelper.h"
 #include "HotUpdateBaseVersionBuilder.h"
 #include "Styling/AppStyle.h"
 #include "Framework/Application/SlateApplication.h"
@@ -19,7 +20,6 @@
 #include "Widgets/Notifications/SProgressBar.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
-#include "Framework/Notifications/NotificationManager.h"
 #include "Misc/Paths.h"
 #include "Async/Async.h"
 
@@ -480,7 +480,7 @@ void SHotUpdateBaseVersionPanel::OnBuildComplete(const FHotUpdateBaseVersionBuil
 			StatusTextBlock->SetColorAndOpacity(FHotUpdateEditorStyle::GetSuccessColor());
 			ProgressBar->SetPercent(1.0f);
 
-			ShowNotification(FText::FromString(FString::Printf(TEXT("基础版本构建成功: %s"), *Result.VersionString)),
+			FHotUpdateNotificationHelper::ShowNotification(FText::FromString(FString::Printf(TEXT("基础版本构建成功: %s"), *Result.VersionString)),
 				SNotificationItem::CS_Success);
 		}
 		else
@@ -489,7 +489,7 @@ void SHotUpdateBaseVersionPanel::OnBuildComplete(const FHotUpdateBaseVersionBuil
 			StatusTextBlock->SetColorAndOpacity(FHotUpdateEditorStyle::GetErrorColor());
 			ProgressBar->SetPercent(0.0f);
 
-			ShowNotification(FText::FromString(Result.ErrorMessage), SNotificationItem::CS_Fail);
+			FHotUpdateNotificationHelper::ShowNotification(FText::FromString(Result.ErrorMessage), SNotificationItem::CS_Fail);
 		}
 	});
 }
@@ -515,22 +515,6 @@ FReply SHotUpdateBaseVersionPanel::OnBrowseOutputDirectory()
 	}
 
 	return FReply::Handled();
-}
-
-void SHotUpdateBaseVersionPanel::RefreshBuildState()
-{
-}
-
-void SHotUpdateBaseVersionPanel::ShowNotification(const FText& Message, SNotificationItem::ECompletionState State)
-{
-	TSharedPtr<SNotificationItem> NotificationItem = FSlateNotificationManager::Get().AddNotification(
-		FNotificationInfo(Message)
-	);
-
-	if (NotificationItem.IsValid())
-	{
-		NotificationItem->SetCompletionState(State);
-	}
 }
 
 TSharedRef<SWidget> SHotUpdateBaseVersionPanel::GeneratePlatformComboBoxItem(TSharedPtr<EHotUpdatePlatform> InItem)
@@ -891,7 +875,6 @@ TSharedRef<SWidget> SHotUpdateBaseVersionPanel::GeneratePatchChunkStrategyComboB
 		break;
 	case EHotUpdateChunkStrategy::Directory:
 		StrategyText = LOCTEXT("ChunkStrategyDirectory", "按目录分包");
-		break;
 		break;
 	case EHotUpdateChunkStrategy::PrimaryAsset:
 		StrategyText = LOCTEXT("ChunkStrategyPrimaryAsset", "UE5标准分包");

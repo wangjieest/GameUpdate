@@ -89,44 +89,6 @@ void UHotUpdateHttpDownloader::AddDownloadTask(const FString& Url, const FString
 	UE_LOG(LogHotUpdate, Verbose, TEXT("Added download task: %s -> %s"), *Url, *SavePath);
 }
 
-void UHotUpdateHttpDownloader::AddDownloadTasks(const TArray<FHotUpdateFileInfo>& Files, const FString& BaseUrl, const FString& SaveDir)
-{
-	for (const FHotUpdateFileInfo& File : Files)
-	{
-		FString FullUrl = BaseUrl / File.FilePath;
-		FString SavePath = SaveDir / File.FilePath;
-		AddDownloadTask(FullUrl, SavePath, File.FileSize, File.FileHash);
-	}
-
-	UE_LOG(LogHotUpdate, Log, TEXT("Added %d download tasks"), Files.Num());
-}
-
-void UHotUpdateHttpDownloader::AddContainerDownloadTasks(const TArray<FHotUpdateContainerInfo>& Containers, const FString& BaseUrl, const FString& SaveDir)
-{
-	for (const FHotUpdateContainerInfo& Container : Containers)
-	{
-		// 下载 .utoc 文件
-		if (!Container.UtocPath.IsEmpty() && Container.UtocSize > 0)
-		{
-			FString FullUrl = BaseUrl.IsEmpty() ? Container.CustomDownloadUrl : BaseUrl / Container.UtocPath;
-			FString SavePath = SaveDir / Container.UtocPath;
-			AddDownloadTask(FullUrl, SavePath, Container.UtocSize, Container.UtocHash);
-			UE_LOG(LogHotUpdate, Log, TEXT("Added container utoc download: %s (%lld bytes)"), *Container.UtocPath, Container.UtocSize);
-		}
-
-		// 下载 .ucas 文件
-		if (!Container.UcasPath.IsEmpty() && Container.UcasSize > 0)
-		{
-			FString FullUrl = BaseUrl.IsEmpty() ? Container.CustomDownloadUrl : BaseUrl / Container.UcasPath;
-			FString SavePath = SaveDir / Container.UcasPath;
-			AddDownloadTask(FullUrl, SavePath, Container.UcasSize, Container.UcasHash);
-			UE_LOG(LogHotUpdate, Log, TEXT("Added container ucas download: %s (%lld bytes)"), *Container.UcasPath, Container.UcasSize);
-		}
-	}
-
-	UE_LOG(LogHotUpdate, Log, TEXT("Added %d container download tasks"), Containers.Num());
-}
-
 void UHotUpdateHttpDownloader::StartDownload()
 {
 	if (bIsDownloading)
@@ -451,23 +413,7 @@ void UHotUpdateHttpDownloader::UpdateProgress()
 	CurrentProgress.DownloadedBytes = TotalDownloaded;
 
 	// 计算速度和剩余时间
-	double CurrentTime = FPlatformTime::Seconds();
-	double ElapsedTime = CurrentTime - LastProgressUpdateTime;
-
-	if (ElapsedTime > 0.5) // 每 0.5 秒更新一次速度
-	{
-		int64 BytesSinceLastUpdate = TotalDownloaded - LastDownloadedBytes;
-		CurrentProgress.DownloadSpeed = (float)(BytesSinceLastUpdate / ElapsedTime);
-
-		if (CurrentProgress.DownloadSpeed > 0)
-		{
-			int64 RemainingBytes = CurrentProgress.TotalBytes - TotalDownloaded;
-			CurrentProgress.RemainingTime = (float)(RemainingBytes / CurrentProgress.DownloadSpeed);
-		}
-
-		LastProgressUpdateTime = CurrentTime;
-		LastDownloadedBytes = TotalDownloaded;
-	}
+	UpdateProgressCalculation(TotalDownloaded, CurrentProgress, LastProgressUpdateTime, LastDownloadedBytes);
 
 	OnProgress.Broadcast(CurrentProgress);
 }

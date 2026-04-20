@@ -484,47 +484,6 @@ bool UHotUpdateDiffTool::ParseManifestFile(
 	return false;
 }
 
-TArray<FString> UHotUpdateDiffTool::GetPakContentList(const FString& PakPath)
-{
-	TArray<FString> ContentList;
-
-	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-	if (!PlatformFile.FileExists(*PakPath))
-	{
-		UE_LOG(LogHotUpdateEditor, Error, TEXT("Pak file not found: %s"), *PakPath);
-		return ContentList;
-	}
-
-	TRefCountPtr<FPakFile> PakFile = new FPakFile(&PlatformFile, *PakPath, false);
-	if (!PakFile.IsValid() || !PakFile->IsValid())
-	{
-		UE_LOG(LogHotUpdateEditor, Error, TEXT("Failed to open Pak file: %s"), *PakPath);
-		return ContentList;
-	}
-
-	for (FPakFile::FFilenameIterator It(*PakFile); It; ++It)
-	{
-		ContentList.Add(It.Filename());
-	}
-
-	// FFilenameIterator 无结果时，使用 FPakEntryIterator 作为降级方案
-	if (ContentList.Num() == 0 && PakFile->GetNumFiles() > 0)
-	{
-		for (FPakFile::FPakEntryIterator It(*PakFile); It; ++It)
-		{
-			const FString* Filename = It.TryGetFilename();
-			if (Filename && !Filename->IsEmpty())
-			{
-				ContentList.Add(*Filename);
-			}
-		}
-	}
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("Found %d files in Pak: %s"), ContentList.Num(), *PakPath);
-
-	return ContentList;
-}
-
 TMap<FString, FString> UHotUpdateDiffTool::GetPakFileHashes(const FString& PakPath)
 {
 	TMap<FString, FString> FileHashes;

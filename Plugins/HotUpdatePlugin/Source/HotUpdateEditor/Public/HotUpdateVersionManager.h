@@ -80,18 +80,6 @@ public:
 	FHotUpdateVersionChain GetVersionChain(const FString& BaseVersion, EHotUpdatePlatform Platform);
 
 	/**
-	 * 验证版本链完整性
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|Version")
-	bool ValidateVersionChain(const FString& FromVersion, const FString& ToVersion);
-
-	/**
-	 * 获取升级路径
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|Version")
-	TArray<FString> GetUpgradePath(const FString& CurrentVersion, const FString& TargetVersion);
-
-	/**
 	 * 获取最新版本
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Hot Update|Version")

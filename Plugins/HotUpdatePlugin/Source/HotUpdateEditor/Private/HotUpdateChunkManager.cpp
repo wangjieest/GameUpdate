@@ -305,59 +305,12 @@ bool UHotUpdateChunkManager::DivideBySize(
 	TArray<FHotUpdateChunkDefinition>& OutChunks,
 	TMap<FString, int32>& OutAssetToChunk)
 {
-	int64 MaxChunkSize = static_cast<int64>(MaxChunkSizeMB) * 1024 * 1024;
-
-	TArray<FString> SortedAssets = AssetPaths;
-	// 按大小排序（大的优先）
-	SortedAssets.Sort([&AssetDiskPaths](const FString& A, const FString& B)
-	{
-		int64 SizeA = GetAssetSize(A, AssetDiskPaths);
-		int64 SizeB = GetAssetSize(B, AssetDiskPaths);
-		return SizeA > SizeB;
-	});
-
-	TArray<FHotUpdateChunkDefinition> CurrentChunks;
-	int32 CurrentChunkIndex = 0;
-	int64 CurrentChunkSize = 0;
-
-	FHotUpdateChunkDefinition CurrentChunk;
-	CurrentChunk.ChunkId = AllocateNextChunkId();
-	CurrentChunk.ChunkName = FString::Printf(TEXT("Chunk_%d"), CurrentChunk.ChunkId);
-	CurrentChunk.Priority = 10;
-
-	for (const FString& AssetPath : SortedAssets)
-	{
-		int64 AssetSize = GetAssetSize(AssetPath, AssetDiskPaths);
-
-		// 检查是否需要新 Chunk
-		if (CurrentChunkSize + AssetSize > MaxChunkSize && CurrentChunk.AssetPaths.Num() > 0)
-		{
-			CurrentChunk.UncompressedSize = CurrentChunkSize;
-			CurrentChunk.CompressedSize = CurrentChunkSize;
-			OutChunks.Add(CurrentChunk);
-
-			// 开始新 Chunk
-			CurrentChunk = FHotUpdateChunkDefinition();
-			CurrentChunk.ChunkId = AllocateNextChunkId();
-			CurrentChunk.ChunkName = FString::Printf(TEXT("Chunk_%d"), CurrentChunk.ChunkId);
-			CurrentChunk.Priority = 10;
-			CurrentChunkSize = 0;
-		}
-
-		CurrentChunk.AssetPaths.Add(AssetPath);
-		OutAssetToChunk.Add(AssetPath, CurrentChunk.ChunkId);
-		CurrentChunkSize += AssetSize;
-	}
-
-	// 添加最后一个 Chunk
-	if (CurrentChunk.AssetPaths.Num() > 0)
-	{
-		CurrentChunk.UncompressedSize = CurrentChunkSize;
-		CurrentChunk.CompressedSize = CurrentChunkSize;
-		OutChunks.Add(CurrentChunk);
-	}
-
-	return OutChunks.Num() > 0;
+	FHotUpdateSizeBasedChunkConfig DefaultConfig;
+	DefaultConfig.MaxChunkSizeMB = MaxChunkSizeMB;
+	DefaultConfig.bSortBySize = true;
+	DefaultConfig.ChunkNamePrefix = TEXT("Chunk");
+	DefaultConfig.ChunkIdStart = -1; // 使用 AllocateNextChunkId() 自动分配
+	return DivideBySizeWithConfig(AssetPaths, AssetDiskPaths, DefaultConfig, OutChunks, OutAssetToChunk);
 }
 
 bool UHotUpdateChunkManager::BuildDependencies(

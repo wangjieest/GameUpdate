@@ -17,8 +17,7 @@ public class HotUpdateEditor : ModuleRules
 			"Engine",
 			"HotUpdate",
 			"InputCore",
-			"DeveloperSettings",
-			"DeveloperToolSettings"
+			"DeveloperSettings"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]
@@ -37,11 +36,8 @@ public class HotUpdateEditor : ModuleRules
 			"Json",
 			"JsonUtilities",
 			"AssetTools",
-			"SourceControl",
-			"RenderCore",
 			"PakFile",
-			// DDC 支持
-			"DerivedDataCache"
+			"DeveloperToolSettings"
 		});
 	}
 }

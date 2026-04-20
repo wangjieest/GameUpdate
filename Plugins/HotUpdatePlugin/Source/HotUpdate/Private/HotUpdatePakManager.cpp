@@ -57,43 +57,36 @@ bool UHotUpdatePakManager::MountPak(const FString& PakPath, int32 PakOrder, cons
 	}
 
 	// 处理加密密钥
-	FString ResolvedEncryptionKey;
 	bool bUseEncryption = false;
 
 	if (!EncryptionKey.IsEmpty())
 	{
-		// 尝试解析为 GUID
-		FGuid KeyGuid;
-		if (FGuid::Parse(EncryptionKey, KeyGuid))
+		bUseEncryption = true;
+
+		// 将密钥注册到引擎
+		TArray<uint8> KeyBytes;
+		if (UHotUpdateFileUtils::HexToBytes(EncryptionKey, KeyBytes))
 		{
-			// 是 GUID，查找已注册的密钥
-			FHotUpdateEncryptionKey RegisteredKey;
-			if (GetRegisteredEncryptionKey(KeyGuid, RegisteredKey))
+			constexpr int32 AESKeySize = 32;
+			if (KeyBytes.Num() < AESKeySize)
 			{
-				ResolvedEncryptionKey = RegisteredKey.Key;
-				bUseEncryption = true;
-				UE_LOG(LogHotUpdate, Log, TEXT("Using registered encryption key: %s"), *KeyGuid.ToString());
+				KeyBytes.SetNumZeroed(AESKeySize);
 			}
-			else
+			else if (KeyBytes.Num() > AESKeySize)
 			{
-				UE_LOG(LogHotUpdate, Warning, TEXT("Encryption key GUID not registered: %s, attempting mount anyway"), *EncryptionKey);
+				KeyBytes.SetNum(AESKeySize);
 			}
+
+			FAES::FAESKey AesKey;
+			FMemory::Memcpy(AesKey.Key, KeyBytes.GetData(), AESKeySize);
+
+			FGuid TempGuid = FGuid::NewGuid();
+			FCoreDelegates::GetRegisterEncryptionKeyMulticastDelegate().Broadcast(TempGuid, AesKey);
+			UE_LOG(LogHotUpdate, Log, TEXT("Registered encryption key with engine for Pak: %s"), *PakPath);
 		}
 		else
 		{
-			// 直接使用原始密钥
-			ResolvedEncryptionKey = EncryptionKey;
-			bUseEncryption = true;
-		}
-
-		// 向引擎注册密钥
-		if (bUseEncryption && !ResolvedEncryptionKey.IsEmpty())
-		{
-			FGuid TempGuid = FGuid::NewGuid();
-			if (RegisterEncryptionKeyWithEngine(TempGuid, ResolvedEncryptionKey))
-			{
-				UE_LOG(LogHotUpdate, Log, TEXT("Registered encryption key with engine for Pak: %s"), *PakPath);
-			}
+			UE_LOG(LogHotUpdate, Warning, TEXT("Failed to convert encryption key to bytes: %s"), *EncryptionKey);
 		}
 	}
 
@@ -104,10 +97,6 @@ bool UHotUpdatePakManager::MountPak(const FString& PakPath, int32 PakOrder, cons
 		// 添加到已挂载列表
 		FHotUpdatePakMetadata Metadata = ParsePakMetadata(PakPath);
 		Metadata.bIsMounted = true;
-		if (bUseEncryption)
-		{
-			Metadata.EncryptionKeyGuid = EncryptionKey;
-		}
 		MountedPaks.Add(Metadata);
 
 		UE_LOG(LogHotUpdate, Log, TEXT("Mounted Pak: %s (Order: %d, Encrypted: %s)"),
@@ -298,7 +287,7 @@ FHotUpdatePakMetadata UHotUpdatePakManager::ParsePakMetadata(const FString& PakP
 	return Metadata;
 }
 
-int32 UHotUpdatePakManager::CalculatePakOrder(const FString& PakName, const FHotUpdateVersionInfo& Version)
+int32 UHotUpdatePakManager::CalculatePakOrder(const FHotUpdateVersionInfo& Version)
 {
 	// Pak 顺序规则：
 	// 1. 基础 Pak (Chunk 0) 优先级最低
@@ -313,88 +302,4 @@ int32 UHotUpdatePakManager::CalculatePakOrder(const FString& PakName, const FHot
 	BaseOrder += Version.PatchVersion;
 
 	return BaseOrder;
-}
-
-// == 加密密钥管理实现 ==
-
-bool UHotUpdatePakManager::RegisterEncryptionKey(const FGuid& KeyGuid, const FString& EncryptionKey, const FString& KeyName)
-{
-	if (!KeyGuid.IsValid())
-	{
-		UE_LOG(LogHotUpdate, Warning, TEXT("Invalid GUID for encryption key registration"));
-		return false;
-	}
-
-	if (EncryptionKey.IsEmpty())
-	{
-		UE_LOG(LogHotUpdate, Warning, TEXT("Empty encryption key for GUID: %s"), *KeyGuid.ToString());
-		return false;
-	}
-
-	FScopeLock Lock(&EncryptionKeyCriticalSection);
-
-	FHotUpdateEncryptionKey KeyInfo;
-	KeyInfo.KeyGuid = KeyGuid;
-	KeyInfo.Key = EncryptionKey;
-	KeyInfo.KeyName = KeyName;
-
-	// 使用 GUID 字符串作为 Map 的键
-	FString GuidString = KeyGuid.ToString();
-	RegisteredEncryptionKeys.Add(GuidString, KeyInfo);
-
-	UE_LOG(LogHotUpdate, Log, TEXT("Registered encryption key: %s (%s)"), *GuidString, KeyName.IsEmpty() ? TEXT("unnamed") : *KeyName);
-
-	return true;
-}
-
-bool UHotUpdatePakManager::GetRegisteredEncryptionKey(const FGuid& KeyGuid, FHotUpdateEncryptionKey& OutKey) const
-{
-	FScopeLock Lock(&EncryptionKeyCriticalSection);
-
-	FString GuidString = KeyGuid.ToString();
-	const FHotUpdateEncryptionKey* FoundKey = RegisteredEncryptionKeys.Find(GuidString);
-
-	if (FoundKey)
-	{
-		OutKey = *FoundKey;
-		return true;
-	}
-
-	return false;
-}
-
-bool UHotUpdatePakManager::RegisterEncryptionKeyWithEngine(const FGuid& KeyGuid, const FString& EncryptionKey)
-{
-	// 将密钥转换为字节数组
-	TArray<uint8> KeyBytes;
-	if (!UHotUpdateFileUtils::HexToBytes(EncryptionKey, KeyBytes))
-	{
-		UE_LOG(LogHotUpdate, Warning, TEXT("Failed to convert encryption key to bytes: %s"), *EncryptionKey);
-		return false;
-	}
-
-	// AES-256 需要 32 字节密钥
-	constexpr int32 AESKeySize = 32;
-	if (KeyBytes.Num() != AESKeySize)
-	{
-		// 如果密钥长度不对，尝试填充或截断
-		if (KeyBytes.Num() < AESKeySize)
-		{
-			KeyBytes.SetNumZeroed(AESKeySize);
-			UE_LOG(LogHotUpdate, Warning, TEXT("Encryption key padded to %d bytes"), AESKeySize);
-		}
-		else
-		{
-			KeyBytes.SetNum(AESKeySize);
-			UE_LOG(LogHotUpdate, Warning, TEXT("Encryption key truncated to %d bytes"), AESKeySize);
-		}
-	}
-
-	// 构造 FAESKey 并通过 FCoreDelegates 注册到引擎
-	FAES::FAESKey AesKey;
-	FMemory::Memcpy(AesKey.Key, KeyBytes.GetData(), AESKeySize);
-
-	FCoreDelegates::GetRegisterEncryptionKeyMulticastDelegate().Broadcast(KeyGuid, AesKey);
-	UE_LOG(LogHotUpdate, Log, TEXT("Registered encryption key with engine: GUID=%s"), *KeyGuid.ToString());
-	return true;
 }

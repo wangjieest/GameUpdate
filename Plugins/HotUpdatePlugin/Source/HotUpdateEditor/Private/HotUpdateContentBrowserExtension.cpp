@@ -17,74 +17,76 @@
 
 #define LOCTEXT_NAMESPACE "HotUpdateContentBrowserExtension"
 
+FContentBrowserMenuExtender_SelectedPaths FHotUpdateContentBrowserExtension::PathViewExtender;
+FContentBrowserMenuExtender_SelectedAssets FHotUpdateContentBrowserExtension::AssetViewExtender;
 
 void FHotUpdateContentBrowserExtension::Register()
 {
 	FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
 
 	// 注册路径视图菜单扩展
-	ContentBrowserModule.GetAllPathViewContextMenuExtenders().Add(
-		FContentBrowserMenuExtender_SelectedPaths::CreateLambda([](const TArray<FString>& SelectedPaths)
-		{
-			TSharedPtr<FExtender> Extender = MakeShareable(new FExtender);
+	PathViewExtender = FContentBrowserMenuExtender_SelectedPaths::CreateLambda([](const TArray<FString>& SelectedPaths)
+	{
+		TSharedPtr<FExtender> Extender = MakeShareable(new FExtender);
 
-			Extender->AddMenuExtension(
-				"PathContextOperators",
-				EExtensionHook::After,
-				nullptr,
-				FMenuExtensionDelegate::CreateLambda([SelectedPaths](FMenuBuilder& MenuBuilder)
+		Extender->AddMenuExtension(
+			"PathContextOperators",
+			EExtensionHook::After,
+			nullptr,
+			FMenuExtensionDelegate::CreateLambda([SelectedPaths](FMenuBuilder& MenuBuilder)
+			{
+				MenuBuilder.BeginSection("HotUpdateSection", LOCTEXT("HotUpdateSection", "热更新"));
 				{
-					MenuBuilder.BeginSection("HotUpdateSection", LOCTEXT("HotUpdateSection", "热更新"));
-					{
-						MenuBuilder.AddMenuEntry(
-							LOCTEXT("PackageDirectory", "热更新打包"),
-							LOCTEXT("PackageDirectoryTooltip", "将选中目录打包为热更新Pak文件"),
-							FSlateIcon(),
-							FUIAction(FExecuteAction::CreateLambda([SelectedPaths]()
-							{
-								ExecuteHotUpdatePackage(SelectedPaths);
-							}))
-						);
-					}
-					MenuBuilder.EndSection();
-				})
-			);
+					MenuBuilder.AddMenuEntry(
+						LOCTEXT("PackageDirectory", "热更新打包"),
+						LOCTEXT("PackageDirectoryTooltip", "将选中目录打包为热更新Pak文件"),
+						FSlateIcon(),
+						FUIAction(FExecuteAction::CreateLambda([SelectedPaths]()
+						{
+							ExecuteHotUpdatePackage(SelectedPaths);
+						}))
+					);
+				}
+				MenuBuilder.EndSection();
+			})
+		);
 
-			return Extender.ToSharedRef();
-		})
-	);
+		return Extender.ToSharedRef();
+	});
+	ContentBrowserModule.GetAllPathViewContextMenuExtenders().Add(PathViewExtender);
 
 	// 注册资产视图菜单扩展
-	ContentBrowserModule.GetAllAssetViewContextMenuExtenders().Add(
-		FContentBrowserMenuExtender_SelectedAssets::CreateLambda([](const TArray<FAssetData>& SelectedAssets)
-		{
-			TSharedPtr<FExtender> Extender = MakeShareable(new FExtender);
+	AssetViewExtender = FContentBrowserMenuExtender_SelectedAssets::CreateLambda([](const TArray<FAssetData>& SelectedAssets)
+	{
+		TSharedPtr<FExtender> Extender = MakeShareable(new FExtender);
 
-			Extender->AddMenuExtension(
-				"AssetContextOperators",
-				EExtensionHook::After,
-				nullptr,
-				FMenuExtensionDelegate::CreateLambda([SelectedAssets](FMenuBuilder& MenuBuilder)
+		Extender->AddMenuExtension(
+			"AssetContextOperators",
+			EExtensionHook::After,
+			nullptr,
+			FMenuExtensionDelegate::CreateLambda([SelectedAssets](FMenuBuilder& MenuBuilder)
+			{
+				MenuBuilder.BeginSection("HotUpdateSection", LOCTEXT("HotUpdateSection", "热更新"));
 				{
-					MenuBuilder.BeginSection("HotUpdateSection", LOCTEXT("HotUpdateSection", "热更新"));
-					{
-						// 获取选中的资源路径
-						TArray<FString> AssetPaths = GetSelectedAssetPaths(SelectedAssets);
+					// 获取选中的资源路径
+					TArray<FString> AssetPaths = GetSelectedAssetPaths(SelectedAssets);
 
-					}
-					MenuBuilder.EndSection();
-				})
-			);
+				}
+				MenuBuilder.EndSection();
+			})
+		);
 
-			return Extender.ToSharedRef();
-		})
-	);
+		return Extender.ToSharedRef();
+	});
+	ContentBrowserModule.GetAllAssetViewContextMenuExtenders().Add(AssetViewExtender);
 
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("Content Browser扩展已注册"));
 }
 
 void FHotUpdateContentBrowserExtension::Unregister()
 {
+	PathViewExtender.Unbind();
+	AssetViewExtender.Unbind();
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("Content Browser扩展已注销"));
 }
 

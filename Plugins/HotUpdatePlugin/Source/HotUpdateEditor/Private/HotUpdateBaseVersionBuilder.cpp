@@ -1,7 +1,7 @@
 // Copyright czm. All Rights Reserved.
 
 #include "HotUpdateBaseVersionBuilder.h"
-#include "HotUpdatePatchPackageBuilder.h"
+#include "HotUpdatePackageHelper.h"
 #include "Core/HotUpdateFileUtils.h"
 #include "HotUpdateEditor.h"
 #include "HotUpdateVersionManager.h"
@@ -64,7 +64,7 @@ struct FHotUpdateResolvedAssetInfo
 		}
 
 		// 派生 SourcePath
-		SourcePath = UHotUpdatePatchPackageBuilder::GetAssetSourcePath(AssetPath);
+		SourcePath = UHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
 	}
 
 	/**
@@ -1012,7 +1012,7 @@ TArray<FHotUpdateResolvedAssetInfo> UHotUpdateBaseVersionBuilder::ResolveAssetIn
 
 	for (const FString& AssetPath : AssetPaths)
 	{
-		FString DiskPath = UHotUpdatePatchPackageBuilder::GetAssetDiskPath(AssetPath, CookedPlatformDir);
+		FString DiskPath = UHotUpdatePackageHelper::GetAssetDiskPath(AssetPath, CookedPlatformDir);
 
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{

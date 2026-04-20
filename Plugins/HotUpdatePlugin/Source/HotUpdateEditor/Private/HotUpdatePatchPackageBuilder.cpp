@@ -1,6 +1,7 @@
 // Copyright czm. All Rights Reserved.
 
 #include "HotUpdatePatchPackageBuilder.h"
+#include "HotUpdatePackageHelper.h"
 #include "Core/HotUpdateFileUtils.h"
 #include "HotUpdateEditor.h"
 #include "HotUpdateUtils.h"
@@ -50,7 +51,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	if (!CurrentConfig.bSkipBuild)
 	{
 		UpdateProgress(TEXT("编译项目"), TEXT(""), 0, 0);
-		if (!CompileProject())
+		if (!UHotUpdatePackageHelper::CompileProject(CurrentConfig.Platform))
 		{
 			Result.bSuccess = false;
 			Result.ErrorMessage = TEXT("项目编译失败");
@@ -63,7 +64,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("跳过编译步骤 (bSkipBuild = true)"));
 	}
 
-	// Cook 资源：确保使用最新的 cooked 文件
+	// Cook 资源
 	if (!CurrentConfig.bSkipCook)
 	{
 		if (CurrentConfig.bIncrementalCook)
@@ -75,7 +76,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 		{
 			// 全量 Cook 模式：先 Cook 再 Diff
 			UpdateProgress(TEXT("Cook 资源"), TEXT(""), 0, 0);
-			if (!CookAssets())
+			if (!UHotUpdatePackageHelper::CookAssets(CurrentConfig.Platform))
 			{
 				Result.bSuccess = false;
 				Result.ErrorMessage = TEXT("Cook 资源失败");
@@ -88,6 +89,8 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	{
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("跳过 Cook 步骤 (bSkipCook = true)"));
 	}
+
+	// === 热更新差异打包流程 ===
 
 	// 1. 加载基础版本 Manifest
 	UpdateProgress(TEXT("加载基础版本"), TEXT(""), 0, 0);
@@ -220,32 +223,41 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 
 		// 查找新增资源：根据项目打包设置获取需要 Cook 的完整资源列表，与基础 Manifest 对比
 		// 不在基础 Manifest 中的资源 = 新增资源
-		{
-			FHotUpdatePackagingSettingsResult SettingsResult = FHotUpdatePackagingSettingsHelper::ParsePackagingSettings(true);
-
-			// 构建基础 Manifest 资源集合
-			TSet<FString> BaseAssetSet;
-			for (const auto& Pair : BaseAssetHashes)
 			{
-				BaseAssetSet.Add(Pair.Key);
-			}
-
-			for (const FString& AssetPath : SettingsResult.AssetPaths)
-			{
-				// 跳过 OFPA 数据
-				if (AssetPath.Contains(TEXT("/__ExternalActors__/")) || AssetPath.Contains(TEXT("/__ExternalObjects__/")))
+				// 优先使用预收集数据，避免后台线程访问 AssetRegistry
+				TArray<FString> AllPackagingAssetPaths;
+				if (CurrentConfig.PreCollectedAssetPaths.Num() > 0)
 				{
-					continue;
+					AllPackagingAssetPaths = CurrentConfig.PreCollectedAssetPaths;
+				}
+				else
+				{
+					AllPackagingAssetPaths = FHotUpdatePackagingSettingsHelper::ParsePackagingSettings(true).AssetPaths;
 				}
 
-				// 不在基础 Manifest 中 = 新增资源
-				if (!BaseAssetSet.Contains(AssetPath))
+				// 构建基础 Manifest 资源集合
+				TSet<FString> BaseAssetSet;
+				for (const auto& Pair : BaseAssetHashes)
 				{
-					AssetsToCook.Add(AssetPath);
-					UE_LOG(LogHotUpdateEditor, Log, TEXT("增量 Cook: 发现新增资源: %s"), *AssetPath);
+					BaseAssetSet.Add(Pair.Key);
+				}
+
+				for (const FString& AssetPath : AllPackagingAssetPaths)
+				{
+					// 跳过 OFPA 数据
+					if (AssetPath.Contains(TEXT("/__ExternalActors__/")) || AssetPath.Contains(TEXT("/__ExternalObjects__/")))
+					{
+						continue;
+					}
+
+					// 不在基础 Manifest 中 = 新增资源
+					if (!BaseAssetSet.Contains(AssetPath))
+					{
+						AssetsToCook.Add(AssetPath);
+						UE_LOG(LogHotUpdateEditor, Log, TEXT("增量 Cook: 发现新增资源: %s"), *AssetPath);
+					}
 				}
 			}
-		}
 
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("增量 Cook: 需要 Cook %d 个资源 (修改 %d + 新增)"),
 			AssetsToCook.Num(), DiffReport.ModifiedAssets.Num());
@@ -253,11 +265,11 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 		if (AssetsToCook.Num() > 0)
 		{
 			UpdateProgress(TEXT("增量 Cook 资源"), TEXT(""), 0, AssetsToCook.Num());
-			if (!CookAssets(AssetsToCook))
+			if (!UHotUpdatePackageHelper::CookAssets(CurrentConfig.Platform, AssetsToCook))
 			{
 				// 增量 Cook 失败，回退到全量 Cook
 				UE_LOG(LogHotUpdateEditor, Warning, TEXT("增量 Cook 失败，回退到全量 Cook"));
-				if (!CookAssets())
+				if (!UHotUpdatePackageHelper::CookAssets(CurrentConfig.Platform))
 				{
 					Result.bSuccess = false;
 					Result.ErrorMessage = TEXT("Cook 资源失败");
@@ -272,11 +284,11 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 			for (int32 i = 0; i < AssetsToCook.Num(); i++)
 			{
 				const FString& AssetPath = AssetsToCook[i];
-				FString DiskPath = GetAssetDiskPath(AssetPath, CookedPlatformDir);
+				FString DiskPath = UHotUpdatePackageHelper::GetAssetDiskPath(AssetPath, CookedPlatformDir);
 				if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 				{
 					// 优先使用源文件路径计算 Hash
-					FString SourcePath = GetAssetSourcePath(AssetPath);
+					FString SourcePath = UHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
 					FString HashPath = (!SourcePath.IsEmpty() && FPaths::FileExists(*SourcePath)) ? SourcePath : DiskPath;
 					CurrentAssetHashes.Add(AssetPath, UHotUpdateFileUtils::CalculateFileHash(HashPath));
 					CurrentAssetSizes.Add(AssetPath, IFileManager::Get().FileSize(*HashPath));
@@ -779,29 +791,54 @@ void UHotUpdatePatchPackageBuilder::BuildPatchPackageAsync(const FHotUpdatePatch
 	// 因为 AssetRegistry->GetAssets() 必须在游戏线程执行
 	FHotUpdatePatchPackageConfig ConfigForThread = Config;
 
-	if (CurrentConfig.PackageType == EHotUpdatePackageType::FromPackagingSettings)
+	// 始终从打包配置读取资源路径
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("在游戏线程预收集打包设置中的资源..."));
+
+	FHotUpdatePackagingSettingsResult SettingsResult = FHotUpdatePackagingSettingsHelper::ParsePackagingSettings(true);
+	if (SettingsResult.Errors.Num() > 0)
 	{
-		UE_LOG(LogHotUpdateEditor, Log, TEXT("在游戏线程预收集打包设置中的资源..."));
+		UE_LOG(LogHotUpdateEditor, Error, TEXT("解析打包设置失败: %s"), *FString::Join(SettingsResult.Errors, TEXT("\n")));
 
-		FHotUpdatePackagingSettingsResult SettingsResult = FHotUpdatePackagingSettingsHelper::ParsePackagingSettings(true);
-		if (SettingsResult.Errors.Num() > 0)
-		{
-			UE_LOG(LogHotUpdateEditor, Error, TEXT("解析打包设置失败: %s"), *FString::Join(SettingsResult.Errors, TEXT("\n")));
-
-			FHotUpdatePatchPackageResult Result;
-			Result.bSuccess = false;
-			Result.ErrorMessage = FString::Join(SettingsResult.Errors, TEXT("\n"));
-			bIsBuilding = false;
-			OnComplete.Broadcast(Result);
-			return;
+		FHotUpdatePatchPackageResult Result;
+		Result.bSuccess = false;
+		Result.ErrorMessage = FString::Join(SettingsResult.Errors, TEXT("\n"));
+		bIsBuilding = false;
+		OnComplete.Broadcast(Result);
+		return;
 		}
 
-		// 将收集到的资源路径转换为 Asset 类型配置
-		ConfigForThread.PackageType = EHotUpdatePackageType::Asset;
-		ConfigForThread.AssetPaths = SettingsResult.AssetPaths;
+	ConfigForThread.AssetPaths = SettingsResult.AssetPaths;
 
-		UE_LOG(LogHotUpdateEditor, Log, TEXT("预收集完成，共 %d 个资源路径"), ConfigForThread.AssetPaths.Num());
+	// 如果需要依赖解析，在游戏线程中完成（GetDependencies 也要求游戏线程）
+	if (ConfigForThread.bIncludeDependencies)
+	{
+		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
+
+		TSet<FString> UniquePaths(ConfigForThread.AssetPaths);
+		for (const FString& AssetPath : ConfigForThread.AssetPaths)
+		{
+			TArray<FName> Dependencies;
+			if (AssetRegistry->GetDependencies(FName(*AssetPath), Dependencies))
+			{
+				for (const FName& Dep : Dependencies)
+				{
+					FString DepStr = Dep.ToString();
+					if (DepStr.StartsWith(TEXT("/Game/")) || DepStr.StartsWith(TEXT("/Engine/")) ||
+						(DepStr.StartsWith(TEXT("/")) && !DepStr.StartsWith(TEXT("/Script/"))))
+					{
+						UniquePaths.Add(DepStr);
+					}
+				}
+			}
+		}
+		ConfigForThread.AssetPaths = UniquePaths.Array();
 	}
+
+	// 标记预收集完成，后台线程无需再访问 AssetRegistry
+	ConfigForThread.PreCollectedAssetPaths = ConfigForThread.AssetPaths;
+
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("预收集完成（含依赖），共 %d 个资源路径"), ConfigForThread.AssetPaths.Num());
 
 	TWeakObjectPtr<UHotUpdatePatchPackageBuilder> WeakThis(this);
 
@@ -996,6 +1033,7 @@ bool UHotUpdatePatchPackageBuilder::ValidateConfig(const FHotUpdatePatchPackageC
 		return false;
 	}
 
+	// 热更新打包需要基础版本相关配置
 	if (Config.BaseVersion.IsEmpty())
 	{
 		OutErrorMessage = TEXT("基础版本号不能为空");
@@ -1023,77 +1061,54 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(
 	TMap<FString, FString>& OutAssetSourcePaths,
 	FString& OutErrorMessage)
 {
-	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
-
 	TArray<FString> AllAssetPaths;
 
-	switch (CurrentConfig.PackageType)
+	// 优先使用预收集的资源列表（游戏线程已收集，含依赖），避免后台线程访问 AssetRegistry
+	if (CurrentConfig.PreCollectedAssetPaths.Num() > 0)
 	{
-	case EHotUpdatePackageType::Asset:
-		AllAssetPaths = CurrentConfig.AssetPaths;
-		break;
-
-	case EHotUpdatePackageType::Directory:
-		for (const FString& DirPath : CurrentConfig.AssetPaths)
-		{
-			FARFilter Filter;
-			Filter.PackagePaths.Add(FName(*DirPath));
-			Filter.bRecursivePaths = true;
-
-			TArray<FAssetData> AssetDataList;
-			AssetRegistry->GetAssets(Filter, AssetDataList);
-
-			for (const FAssetData& AssetData : AssetDataList)
-			{
-				AllAssetPaths.Add(AssetData.PackageName.ToString());
-			}
-		}
-		break;
-
-	case EHotUpdatePackageType::FromPackagingSettings:
-		{
-			FHotUpdatePackagingSettingsResult SettingsResult = FHotUpdatePackagingSettingsHelper::ParsePackagingSettings(true);
-			if (SettingsResult.Errors.Num() > 0)
-			{
-				OutErrorMessage = FString::Join(SettingsResult.Errors, TEXT("\n"));
-				return false;
-			}
-			AllAssetPaths = SettingsResult.AssetPaths;
-
-			// 收集 DirectoriesToAlwaysStageAsUFS/NonUFS 中的 Staged 文件
-			TArray<FString> StagedPaths = FHotUpdatePackagingSettingsHelper::CollectStagedFilePaths();
-			AllAssetPaths.Append(StagedPaths);
-		}
-		break;
+		AllAssetPaths = CurrentConfig.PreCollectedAssetPaths;
 	}
-
-	// 收集依赖
-	if (CurrentConfig.bIncludeDependencies)
+	else
 	{
-		TSet<FString> UniquePaths(AllAssetPaths);
-
-		for (const FString& AssetPath : AllAssetPaths)
+		// 同步调用路径（如 Commandlet），此时在游戏线程，可以直接访问 AssetRegistry
+		FHotUpdatePackagingSettingsResult SettingsResult = FHotUpdatePackagingSettingsHelper::ParsePackagingSettings(true);
+		if (SettingsResult.Errors.Num() > 0)
 		{
-			TArray<FName> Dependencies;
-			if (AssetRegistry->GetDependencies(FName(*AssetPath), Dependencies))
+			OutErrorMessage = FString::Join(SettingsResult.Errors, TEXT("\n"));
+			return false;
+		}
+		AllAssetPaths = SettingsResult.AssetPaths;
+
+		// 依赖解析（同步路径在游戏线程，安全）
+		if (CurrentConfig.bIncludeDependencies)
+		{
+			FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+			IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
+
+			TSet<FString> UniquePaths(AllAssetPaths);
+			for (const FString& AssetPath : AllAssetPaths)
 			{
-				for (const FName& Dep : Dependencies)
+				TArray<FName> Dependencies;
+				if (AssetRegistry->GetDependencies(FName(*AssetPath), Dependencies))
 				{
-					FString DepStr = Dep.ToString();
-					// 收集所有资源依赖：/Game/（项目）、/Engine/（引擎）、插件（如 /NNE/）
-					// 排除 /Script/ 路径（不是资源路径）
-					if (DepStr.StartsWith(TEXT("/Game/")) || DepStr.StartsWith(TEXT("/Engine/")) ||
-						(DepStr.StartsWith(TEXT("/")) && !DepStr.StartsWith(TEXT("/Script/"))))
+					for (const FName& Dep : Dependencies)
 					{
-						UniquePaths.Add(DepStr);
+						FString DepStr = Dep.ToString();
+						if (DepStr.StartsWith(TEXT("/Game/")) || DepStr.StartsWith(TEXT("/Engine/")) ||
+							(DepStr.StartsWith(TEXT("/")) && !DepStr.StartsWith(TEXT("/Script/"))))
+						{
+							UniquePaths.Add(DepStr);
+						}
 					}
 				}
 			}
+			AllAssetPaths = UniquePaths.Array();
 		}
-
-		AllAssetPaths = UniquePaths.Array();
 	}
+
+	// 收集 DirectoriesToAlwaysStageAsUFS/NonUFS 中的 Staged 文件
+	TArray<FString> StagedPaths = FHotUpdatePackagingSettingsHelper::CollectStagedFilePaths();
+	AllAssetPaths.Append(StagedPaths);
 	
 	// 获取磁盘路径
 	// 使用 Cooked 目录解析磁盘路径
@@ -1128,14 +1143,14 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(
 		}
 		else
 		{
-			FString DiskPath = GetAssetDiskPath(AssetPath, CookedPlatformDir);
+			FString DiskPath = UHotUpdatePackageHelper::GetAssetDiskPath(AssetPath, CookedPlatformDir);
 			if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 			{
 				OutAssetPaths.Add(AssetPath);
 				OutAssetDiskPaths.Add(AssetPath, DiskPath);
 
 				// 同时收集源文件路径（用于 Hash 计算）
-				FString SourcePath = GetAssetSourcePath(AssetPath);
+				FString SourcePath = UHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
 				if (!SourcePath.IsEmpty())
 				{
 					OutAssetSourcePaths.Add(AssetPath, SourcePath);
@@ -1220,7 +1235,7 @@ bool UHotUpdatePatchPackageBuilder::LoadBaseManifest(
 
 			// 将 filePath 从 manifest 格式（"Game/Path/File.ext"）归一化为 UE Long Package Name 格式（"/Game/Path/File"）
 			// 以便与 CollectAssets 产生的键格式匹配
-			FString NormalizedPath = FileNameToAssetPath(FilePath);
+			FString NormalizedPath = UHotUpdatePackageHelper::FileNameToAssetPath(FilePath);
 
 			OutAssetHashes.Add(NormalizedPath, Hash);
 			OutAssetSizes.Add(NormalizedPath, Size);
@@ -1553,7 +1568,7 @@ bool UHotUpdatePatchPackageBuilder::GenerateManifest(
 	for (const FString& AssetPath : AllAssetPaths)
 	{
 		TSharedPtr<FJsonObject> FileObj = MakeShareable(new FJsonObject);
-		FileObj->SetStringField(TEXT("filePath"), ConvertAssetPathToFileName(AssetPath, HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform)));
+		FileObj->SetStringField(TEXT("filePath"), UHotUpdatePackageHelper::ConvertAssetPathToFileName(AssetPath, HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform)));
 
 		// 检查文件来源（优先级：当前 patch > 之前 patch > 基础版本容器 > base manifest）
 		bool bIsCurrentPatch = ChangedAssetDiskPaths.Contains(AssetPath);
@@ -1567,7 +1582,7 @@ bool UHotUpdatePatchPackageBuilder::GenerateManifest(
 			if (DiskPath)
 			{
 					// 优先使用源文件计算 Hash
-					FString SourcePath = GetAssetSourcePath(AssetPath);
+					FString SourcePath = UHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
 					FString HashPath = (!SourcePath.IsEmpty() && FPaths::FileExists(*SourcePath)) ? SourcePath : *DiskPath;
 					int64 FileSize = IFileManager::Get().FileSize(*HashPath);
 					FileObj->SetNumberField(TEXT("fileSize"), FileSize);
@@ -1675,238 +1690,6 @@ void UHotUpdatePatchPackageBuilder::UpdateProgress(
 			PinnedBuilder->OnProgress.Broadcast(ProgressCopy);
 		}
 	});
-}
-
-FString UHotUpdatePatchPackageBuilder::ConvertAssetPathToFileName(const FString& AssetPath, const FString& CookedPlatformDir)
-{
-	FString FileName = AssetPath;
-
-	// 去掉前导斜杠（如 "/Game/Startup/umg_hotupdate" -> "Game/Startup/umg_hotupdate"）
-	if (FileName.StartsWith(TEXT("/")))
-	{
-		FileName.RightChopInline(1);
-	}
-
-	// Staged 文件（如 GameUpdate/Content/Setting/ui.txt）已有扩展名，直接返回
-	FString CurrentExtension = FPaths::GetExtension(FileName);
-	if (!CurrentExtension.IsEmpty() && CurrentExtension != TEXT("uasset") && CurrentExtension != TEXT("umap"))
-	{
-		// 非 UE 资源扩展名，说明是 Staged 文件路径，直接作为 FileName
-		return FileName;
-	}
-
-	// 使用实际磁盘文件来确定后缀
-	FString DiskPath = GetAssetDiskPath(AssetPath, CookedPlatformDir);
-	if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
-	{
-		// 从磁盘路径获取实际扩展名
-		FString Extension = FPaths::GetExtension(DiskPath);
-		if (!Extension.IsEmpty())
-		{
-			FileName += TEXT(".") + Extension;
-			return FileName;
-		}
-	}
-
-	// 如果文件不存在（可能是新资产），使用默认的 .uasset 后缀
-	FileName += TEXT(".uasset");
-	return FileName;
-}
-
-FString UHotUpdatePatchPackageBuilder::FileNameToAssetPath(const FString& FileName)
-{
-	FString AssetPath = FileName;
-
-	// 添加前导斜杠（如 "Game/Startup/umg_hotupdate.uasset" -> "/Game/Startup/umg_hotupdate.uasset"）
-	if (!AssetPath.StartsWith(TEXT("/")))
-	{
-		AssetPath = TEXT("/") + AssetPath;
-	}
-
-	// 移除已知的资源文件扩展名
-	if (AssetPath.EndsWith(TEXT(".uasset")))
-	{
-		AssetPath.LeftChopInline(7); // strlen(".uasset") = 7
-	}
-	else if (AssetPath.EndsWith(TEXT(".umap")))
-	{
-		AssetPath.LeftChopInline(5); // strlen(".umap")
-	}
-
-	return AssetPath;
-}
-
-FString UHotUpdatePatchPackageBuilder::GetAssetDiskPath(const FString& AssetPath, const FString& CookedPlatformDir)
-{
-	if (CookedPlatformDir.IsEmpty())
-	{
-		UE_LOG(LogHotUpdateEditor, Error, TEXT("GetAssetDiskPath: CookedPlatformDir 不能为空"));
-		return TEXT("");
-	}
-
-	// 通过 FPackageName 将长包名解析为磁盘路径，再映射到 Cooked 目录结构
-	// 目标: /Game/X -> {ProjectName}/Content/X, /Engine/X -> Engine/Content/X
-	//       引擎插件 -> Engine/Plugins/.../Content/X, 项目插件 -> {ProjectName}/Plugins/.../Content/X
-	FString ResolvedPath;
-	if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, ResolvedPath, TEXT("")))
-	{
-		return TEXT("");
-	}
-
-	FString RelativePath;
-
-	if (ResolvedPath.StartsWith(TEXT("../../../")))
-	{
-		// 旧版相对路径: ../../../{ProjectName}/Content/X -> {ProjectName}/Content/X
-		RelativePath = ResolvedPath.Mid(9);
-	}
-	else if (ResolvedPath.StartsWith(TEXT("../../")))
-	{
-		// 插件相对路径: ../../Plugins/Category/PluginName/Content/X
-		// 通过 IPluginManager::GetType() 区分引擎插件与项目插件
-		FString Suffix = ResolvedPath.Mid(6); // 去掉 "../../"
-
-		FString PluginName;
-		{
-			FString Rest = AssetPath.Mid(1);
-			int32 SlashIdx;
-			if (Rest.FindChar(TEXT('/'), SlashIdx))
-				PluginName = Rest.Left(SlashIdx);
-			else
-				PluginName = Rest;
-		}
-
-		bool bIsProjectPlugin = false;
-		if (!PluginName.IsEmpty())
-		{
-			TArray<TSharedRef<IPlugin>> Plugins = IPluginManager::Get().GetEnabledPlugins();
-			for (const TSharedRef<IPlugin>& P : Plugins)
-			{
-				if (P.Get().GetName() == PluginName)
-				{
-					EPluginType Type = P.Get().GetType();
-					bIsProjectPlugin = (Type == EPluginType::Project || Type == EPluginType::Mod);
-					break;
-				}
-			}
-		}
-
-		if (bIsProjectPlugin)
-			RelativePath = FString(FApp::GetProjectName()) / Suffix;
-		else
-			RelativePath = TEXT("Engine") / Suffix;
-
-		if (PluginName.IsEmpty())
-		{
-			UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetAssetDiskPath: 无法确定插件类型，默认引擎路径: %s"), *AssetPath);
-		}
-	}
-	else
-	{
-		// 绝对路径: 根据路径前缀提取相对部分
-		auto NormalizeDir = [](FString Dir) { FPaths::NormalizeDirectoryName(Dir); return Dir; };
-
-		if (AssetPath.StartsWith(TEXT("/Game/")))
-		{
-			FString ProjectContentDir = NormalizeDir(FPaths::ProjectContentDir());
-			if (ResolvedPath.StartsWith(ProjectContentDir))
-				RelativePath = FString(FApp::GetProjectName()) / TEXT("Content") + ResolvedPath.RightChop(ProjectContentDir.Len());
-			else
-				RelativePath = FString(FApp::GetProjectName()) / TEXT("Content") + AssetPath.Mid(5);
-		}
-		else if (AssetPath.StartsWith(TEXT("/Engine/")))
-		{
-			FString EngineContentDir = NormalizeDir(FPaths::EngineContentDir());
-			if (ResolvedPath.StartsWith(EngineContentDir))
-				RelativePath = TEXT("Engine/Content") + ResolvedPath.RightChop(EngineContentDir.Len());
-			else
-				RelativePath = TEXT("Engine/Content") / AssetPath.Mid(8);
-		}
-		else
-		{
-			// 绝对路径的插件: 从项目或引擎根目录提取相对路径
-			FString ProjectDir = NormalizeDir(FPaths::ProjectDir());
-			if (ResolvedPath.StartsWith(ProjectDir))
-			{
-				// 提取相对于项目根目录的路径（如 Plugins/TestPlugin/Content/X）
-				FString PathUnderProject = ResolvedPath.RightChop(ProjectDir.Len());
-
-				// 判断是否为项目插件（需要添加 {ProjectName}/ 前缀以匹配 Cooked 目录结构）
-				FString PluginName;
-				{
-					FString Rest = AssetPath.Mid(1);
-					int32 SlashIdx;
-					if (Rest.FindChar(TEXT('/'), SlashIdx))
-						PluginName = Rest.Left(SlashIdx);
-					else
-						PluginName = Rest;
-				}
-
-				bool bIsProjectPlugin = false;
-				if (!PluginName.IsEmpty())
-				{
-					TArray<TSharedRef<IPlugin>> Plugins = IPluginManager::Get().GetEnabledPlugins();
-					for (const TSharedRef<IPlugin>& P : Plugins)
-					{
-						if (P.Get().GetName() == PluginName)
-						{
-							EPluginType Type = P.Get().GetType();
-							bIsProjectPlugin = (Type == EPluginType::Project || Type == EPluginType::Mod);
-							break;
-						}
-					}
-				}
-
-				if (bIsProjectPlugin)
-					RelativePath = FString(FApp::GetProjectName()) / PathUnderProject;
-				else
-					RelativePath = TEXT("Engine") / PathUnderProject;
-			}
-			else
-			{
-				FString EngineDir = NormalizeDir(FPaths::EngineDir());
-				if (ResolvedPath.StartsWith(EngineDir))
-					RelativePath = ResolvedPath.RightChop(EngineDir.Len());
-				else
-				{
-					UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetAssetDiskPath: 无法解析路径 %s (Resolved=%s)"), *AssetPath, *ResolvedPath);
-					return TEXT("");
-				}
-			}
-		}
-	}
-
-	// 在 Cooked 目录中查找 .umap 或 .uasset
-	FString CookedMapPath = FPaths::Combine(CookedPlatformDir, RelativePath + TEXT(".umap"));
-	if (FPaths::FileExists(*CookedMapPath))
-		return CookedMapPath;
-
-	FString CookedAssetPath = FPaths::Combine(CookedPlatformDir, RelativePath + TEXT(".uasset"));
-	if (FPaths::FileExists(*CookedAssetPath))
-		return CookedAssetPath;
-
-	return TEXT("");
-}
-
-FString UHotUpdatePatchPackageBuilder::GetAssetSourcePath(const FString& AssetPath)
-{
-	FString ResolvedPath;
-	if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, ResolvedPath, TEXT("")))
-	{
-		return TEXT("");
-	}
-
-	// TryConvertLongPackageNameToFilename 返回相对路径如 ../../../GameUpdate/Content/UMG/uw_test_pak_1
-	// 转为绝对路径
-	FString AbsolutePath = FPaths::ConvertRelativePathToFull(ResolvedPath);
-
-	// 尝试 .umap 和 .uasset 扩展名
-	if (FPaths::FileExists(AbsolutePath + TEXT(".umap")))
-		return AbsolutePath + TEXT(".umap");
-	if (FPaths::FileExists(AbsolutePath + TEXT(".uasset")))
-		return AbsolutePath + TEXT(".uasset");
-
-	return TEXT("");
 }
 
 bool UHotUpdatePatchPackageBuilder::LoadPreviousPatchManifest(
@@ -2033,7 +1816,7 @@ bool UHotUpdatePatchPackageBuilder::LoadPreviousPatchManifest(
 				FString Hash = FileObj->GetStringField(TEXT("fileHash"));
 				int64 Size = (int64)FileObj->GetNumberField(TEXT("fileSize"));
 
-				FString NormalizedPath = FileNameToAssetPath(FilePath);
+				FString NormalizedPath = UHotUpdatePackageHelper::FileNameToAssetPath(FilePath);
 				OutPatchFilesHash.Add(NormalizedPath, Hash);
 				OutPatchFilesSize.Add(NormalizedPath, Size);
 			}
@@ -2190,7 +1973,7 @@ bool UHotUpdatePatchPackageBuilder::LoadBaseContainers(
 			FString Hash = FileObj->GetStringField(TEXT("fileHash"));
 			int64 Size = (int64)FileObj->GetNumberField(TEXT("fileSize"));
 
-			FString NormalizedPath = FileNameToAssetPath(FilePath);
+			FString NormalizedPath = UHotUpdatePackageHelper::FileNameToAssetPath(FilePath);
 
 			// 检查 source 字段，只添加 base 资源
 			FString Source = TEXT("base");
@@ -2267,178 +2050,3 @@ int32 UHotUpdatePatchPackageBuilder::CopyContainerFiles(
 	return CopiedCount;
 }
 
-bool UHotUpdatePatchPackageBuilder::CompileProject()
-{
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始编译项目..."));
-
-	// 使用 UnrealBuildTool 直接编译游戏目标
-	// 比 UAT BuildCookRun 更轻量，且在编辑器运行时更可靠
-	FString EngineDir = FPaths::EngineDir();
-	FString UBTPath = FPaths::ConvertRelativePathToFull(
-		FPaths::Combine(EngineDir, TEXT("Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll")));
-
-	FString ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
-	FString PlatformName = HotUpdateUtils::GetPlatformDirectoryName(CurrentConfig.Platform);
-	FString BuildConfig = TEXT("Development");
-
-	// UBT 命令: dotnet UnrealBuildTool.dll <TargetName> <Platform> <Config> -project="..."
-	FString Params = FString::Printf(
-		TEXT("\"%s\" GameUpdate %s %s -project=\"%s\""),
-		*UBTPath, *PlatformName, *BuildConfig, *ProjectPath);
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("执行编译: dotnet %s"), *Params);
-
-	FString CommandLine = FString::Printf(TEXT("/c dotnet %s"), *Params);
-
-	// 使用 FMonitoredProcess 执行，实时输出编译日志
-	FMonitoredProcess Process(TEXT("cmd.exe"), CommandLine, true);
-
-	Process.OnOutput().BindLambda([](const FString& Output)
-	{
-		UE_LOG(LogHotUpdateEditor, Log, TEXT("%s"), *Output);
-	});
-
-	if (!Process.Launch())
-	{
-		UE_LOG(LogHotUpdateEditor, Error, TEXT("无法启动编译进程"));
-		return false;
-	}
-
-	// 等待进程完成，同时检查取消状态
-	while (Process.Update())
-	{
-		if (bIsCancelled)
-		{
-			Process.Cancel();
-			break;
-		}
-		FPlatformProcess::Sleep(0.1f);
-	}
-
-	int32 ReturnCode = Process.GetReturnCode();
-
-	if (bIsCancelled)
-	{
-		UE_LOG(LogHotUpdateEditor, Warning, TEXT("编译已取消"));
-		return false;
-	}
-
-	if (ReturnCode != 0)
-	{
-		UE_LOG(LogHotUpdateEditor, Error, TEXT("编译失败，返回码: %d"), ReturnCode);
-		return false;
-	}
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("编译完成"));
-	return true;
-}
-
-bool UHotUpdatePatchPackageBuilder::CookAssets(const TArray<FString>& AssetsToCook)
-{
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始 Cook 资源..."));
-
-	// 使用子进程执行 Cook，避免在当前 Editor 进程中调用 CookCommandlet 导致的平台冲突
-	FString EngineDir = FPaths::EngineDir();
-	#if PLATFORM_WINDOWS
-	FString ExePath = FPaths::ConvertRelativePathToFull(EngineDir / TEXT("Binaries/Win64/UnrealEditor-Cmd.exe"));
-#elif PLATFORM_MAC
-	FString ExePath = FPaths::ConvertRelativePathToFull(EngineDir / TEXT("Binaries/Mac/UnrealEditor-Cmd"));
-#else
-	FString ExePath = FPaths::ConvertRelativePathToFull(EngineDir / TEXT("Binaries/Win64/UnrealEditor-Cmd.exe"));
-#endif
-	FString ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
-
-	FString CookPlatform = HotUpdateUtils::GetPlatformString(CurrentConfig.Platform);
-
-	FString Params;
-	if (AssetsToCook.Num() > 0)
-	{
-		// 增量 Cook：只 Cook 指定资源
-		FString PackageList;
-		for (int32 i = 0; i < AssetsToCook.Num(); i++)
-		{
-			if (i > 0) PackageList += TEXT("+");
-			PackageList += AssetsToCook[i];
-		}
-
-		Params = FString::Printf(TEXT("\"%s\" -run=cook -targetplatform=%s -PACKAGE=%s -cooksinglepackage -NullRHI -unattended -NoSound"),
-			*ProjectPath, *CookPlatform, *PackageList);
-
-		UE_LOG(LogHotUpdateEditor, Log, TEXT("增量 Cook: 只 Cook %d 个资源"), AssetsToCook.Num());
-	}
-	else
-	{
-		// 全量 Cook
-		Params = FString::Printf(TEXT("\"%s\" -run=cook -targetplatform=%s -NullRHI -unattended -NoSound"),
-			*ProjectPath, *CookPlatform);
-
-		UE_LOG(LogHotUpdateEditor, Log, TEXT("全量 Cook"));
-	}
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("执行 Cook: %s %s"), *ExePath, *Params);
-
-	// 使用 FMonitoredProcess 执行，实时输出 Cook 日志
-	FMonitoredProcess Process(ExePath, Params, true);
-
-	Process.OnOutput().BindLambda([](const FString& Output)
-	{
-		UE_LOG(LogHotUpdateEditor, Log, TEXT("%s"), *Output);
-	});
-
-	if (!Process.Launch())
-	{
-		UE_LOG(LogHotUpdateEditor, Error, TEXT("无法启动 Cook 进程"));
-		return false;
-	}
-
-	// 等待进程完成，同时检查取消状态
-	while (Process.Update())
-	{
-		if (bIsCancelled)
-		{
-			Process.Cancel();
-			break;
-		}
-		FPlatformProcess::Sleep(0.1f);
-	}
-
-	int32 ReturnCode = Process.GetReturnCode();
-
-	if (bIsCancelled)
-	{
-		UE_LOG(LogHotUpdateEditor, Warning, TEXT("Cook 已取消"));
-		return false;
-	}
-
-	if (ReturnCode != 0)
-	{
-		bool bIsIncremental = AssetsToCook.Num() > 0;
-		if (bIsIncremental && ReturnCode == 1)
-		{
-			// 增量 Cook 返回码 1 通常是依赖缺失警告（如 -cooksinglepackage 的 "Content is missing from cook"）
-			// 检查目标文件是否已生成，如果至少有一个文件生成则视为成功
-			UE_LOG(LogHotUpdateEditor, Warning, TEXT("增量 Cook 返回警告码 1，检查 Cook 输出..."));
-			FString CookedPlatformDir = HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform);
-			int32 FoundCount = 0;
-			for (const FString& AssetPath : AssetsToCook)
-			{
-				FString DiskPath = GetAssetDiskPath(AssetPath, CookedPlatformDir);
-				if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
-				{
-					FoundCount++;
-				}
-			}
-			if (FoundCount > 0)
-			{
-				UE_LOG(LogHotUpdateEditor, Log, TEXT("增量 Cook: %d/%d 个目标文件已生成，视为成功"), FoundCount, AssetsToCook.Num());
-				UE_LOG(LogHotUpdateEditor, Log, TEXT("Cook 完成"));
-				return true;
-			}
-		}
-		UE_LOG(LogHotUpdateEditor, Error, TEXT("Cook 失败，返回码: %d"), ReturnCode);
-		return false;
-	}
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("Cook 完成"));
-	return true;
-}

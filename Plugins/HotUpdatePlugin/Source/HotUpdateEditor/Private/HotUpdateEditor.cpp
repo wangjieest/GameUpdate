@@ -16,6 +16,7 @@
 #include "WorkspaceMenuStructureModule.h"
 #include "WorkspaceMenuStructure.h"
 #include "Framework/Docking/WorkspaceItem.h"
+#include "Misc/PackageName.h"
 
 // 日志分类定义
 DEFINE_LOG_CATEGORY(LogHotUpdateEditor);
@@ -26,8 +27,8 @@ static const FName HotUpdateTabName("HotUpdateTools");
 
 // 定义待定数据静态成员
 int32 FHotUpdatePendingData::InitialTab = 0;
-TArray<FString> FHotUpdatePendingData::AssetPaths;
-EHotUpdatePackageType FHotUpdatePendingData::PackageType = EHotUpdatePackageType::Asset;
+TArray<FString> FHotUpdatePendingData::UassetFilePaths;
+TArray<FString> FHotUpdatePendingData::NonAssetFilePaths;
 bool FHotUpdatePendingData::bNeedReRegisterSpawner = false;
 
 /** 注册 Nomad Tab Spawner */
@@ -56,11 +57,15 @@ static void RegisterHotUpdateTabSpawner()
 				MainWindow->SetInitialTab(FHotUpdatePendingData::InitialTab);
 				FHotUpdatePendingData::InitialTab = 0;
 			}
-			if (FHotUpdatePendingData::AssetPaths.Num() > 0)
+			if (FHotUpdatePendingData::UassetFilePaths.Num() > 0)
 			{
-				MainWindow->SetAssetPaths(FHotUpdatePendingData::AssetPaths);
-				MainWindow->SetPackageType(FHotUpdatePendingData::PackageType);
-				FHotUpdatePendingData::AssetPaths.Empty();
+				MainWindow->SetUassetFilePaths(FHotUpdatePendingData::UassetFilePaths);
+				FHotUpdatePendingData::UassetFilePaths.Empty();
+			}
+			if (FHotUpdatePendingData::NonAssetFilePaths.Num() > 0)
+			{
+				MainWindow->SetNonAssetFilePaths(FHotUpdatePendingData::NonAssetFilePaths);
+				FHotUpdatePendingData::NonAssetFilePaths.Empty();
 			}
 
 			MajorTab->SetContent(MainWindow);
@@ -183,13 +188,12 @@ private:
 					if (SelectedAssets.Num() > 0)
 					{
 						// 收集资源路径
-						FHotUpdatePendingData::AssetPaths.Empty();
+						FHotUpdatePendingData::UassetFilePaths.Empty();
 						for (const FAssetData& Asset : SelectedAssets)
 						{
-							FHotUpdatePendingData::AssetPaths.Add(Asset.PackageName.ToString());
+							FHotUpdatePendingData::UassetFilePaths.Add(Asset.PackageName.ToString());
 						}
-						FHotUpdatePendingData::PackageType = EHotUpdatePackageType::Asset;
-						HotUpdateOpenTab(1);
+							HotUpdateOpenTab(2);
 					}
 				}))
 			);

@@ -13,6 +13,7 @@
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/SWindow.h"
 #include "Editor.h"
+#include "Misc/PackageName.h"
 
 #define LOCTEXT_NAMESPACE "HotUpdateContentBrowserExtension"
 
@@ -41,7 +42,7 @@ void FHotUpdateContentBrowserExtension::Register()
 							FSlateIcon(),
 							FUIAction(FExecuteAction::CreateLambda([SelectedPaths]()
 							{
-								ExecuteHotUpdatePackage(SelectedPaths, EHotUpdatePackageType::Directory);
+								ExecuteHotUpdatePackage(SelectedPaths);
 							}))
 						);
 					}
@@ -87,19 +88,33 @@ void FHotUpdateContentBrowserExtension::Unregister()
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("Content Browser扩展已注销"));
 }
 
-void FHotUpdateContentBrowserExtension::ExecuteHotUpdatePackage(TArray<FString> AssetPaths, EHotUpdatePackageType PackageType)
+void FHotUpdateContentBrowserExtension::ExecuteHotUpdatePackage(TArray<FString> PackagePaths)
 {
-	if (AssetPaths.Num() == 0)
+	if (PackagePaths.Num() == 0)
 	{
 		return;
 	}
 
+	// 将 UE 包路径解析为磁盘 uasset 文件路径
+	TArray<FString> UassetFilePaths;
+	for (const FString& PackagePath : PackagePaths)
+	{
+		FString ResolvedPath;
+		if (FPackageName::TryConvertLongPackageNameToFilename(PackagePath, ResolvedPath, TEXT("")))
+		{
+			FString AbsolutePath = FPaths::ConvertRelativePathToFull(ResolvedPath);
+			if (FPaths::FileExists(AbsolutePath + TEXT(".umap")))
+				UassetFilePaths.Add(AbsolutePath + TEXT(".umap"));
+			else
+				UassetFilePaths.Add(AbsolutePath + TEXT(".uasset"));
+		}
+	}
+
 	// 设置待定数据
-	FHotUpdatePendingData::AssetPaths = AssetPaths;
-	FHotUpdatePendingData::PackageType = PackageType;
+	FHotUpdatePendingData::UassetFilePaths = UassetFilePaths;
 
 	// 使用全局函数打开 Tab，自动处理关闭后重新注册的逻辑
-	HotUpdateOpenTab(1);
+	HotUpdateOpenTab(2);
 }
 
 TArray<FString> FHotUpdateContentBrowserExtension::GetSelectedAssetPaths(const TArray<FAssetData>& SelectedAssets)

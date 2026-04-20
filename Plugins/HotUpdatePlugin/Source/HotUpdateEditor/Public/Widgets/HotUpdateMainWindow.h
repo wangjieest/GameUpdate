@@ -9,6 +9,7 @@
 #include "HotUpdateEditorTypes.h"
 
 class SHotUpdatePackagingPanel;
+class SHotUpdateCustomPackagingPanel;
 class SHotUpdateVersionDiffPanel;
 class SHotUpdatePakViewerPanel;
 class SHotUpdateBaseVersionPanel;
@@ -18,13 +19,14 @@ namespace HotUpdateTabIds
 {
 	static const FName BaseVersion("HotUpdate_BaseVersion");
 	static const FName Packaging("HotUpdate_Packaging");
+	static const FName CustomPackaging("HotUpdate_CustomPackaging");
 	static const FName VersionDiff("HotUpdate_VersionDiff");
 	static const FName PakViewer("HotUpdate_PakViewer");
 }
 
 /**
  * 热更新工具主窗口
- * 整合更新版本、版本比较工具和 Pak 查看器的统一入口
+ * 整合更新版本、自定义打包、版本比较工具和 Pak 查看器的统一入口
  * 使用 FTabManager 管理子标签，支持停靠和拖拽拆分
  */
 class HOTUPDATEEDITOR_API SHotUpdateMainWindow : public SCompoundWidget
@@ -39,12 +41,13 @@ public:
 	/** 设置初始要显示的 Tab */
 	void SetInitialTab(int32 TabIndex);
 
-	/** 设置要打包的资源路径（转发给 PackagingPanel） */
-	void SetAssetPaths(const TArray<FString>& InPaths);
+	/** 设置要打包的 uasset 文件路径（转发给 CustomPackagingPanel） */
+	void SetUassetFilePaths(const TArray<FString>& InPaths);
 
-	/** 设置打包类型（转发给 PackagingPanel） */
-	void SetPackageType(EHotUpdatePackageType InType);
+	/** 设置要打包的非资产文件路径（转发给 CustomPackagingPanel） */
+	void SetNonAssetFilePaths(const TArray<FString>& InPaths);
 
+	/** 设置打包类型（转发给 CustomPackagingPanel） */
 	/** 创建默认标签布局 */
 	static TSharedRef<FTabManager::FLayout> CreateDefaultLayout();
 
@@ -58,6 +61,7 @@ private:
 	/** 子标签生成回调 */
 	TSharedRef<SDockTab> OnSpawnBaseVersionTab(const FSpawnTabArgs& Args) const;
 	TSharedRef<SDockTab> OnSpawnPackagingTab(const FSpawnTabArgs& Args) const;
+	TSharedRef<SDockTab> OnSpawnCustomPackagingTab(const FSpawnTabArgs& Args) const;
 	TSharedRef<SDockTab> OnSpawnVersionDiffTab(const FSpawnTabArgs& Args) const;
 	TSharedRef<SDockTab> OnSpawnPakViewerTab(const FSpawnTabArgs& Args) const;
 
@@ -74,8 +78,11 @@ private:
 	/** 所属窗口 */
 	TSharedPtr<SWindow> ParentWindow;
 
-	/** 打包面板 */
+	/** 打包面板（更新版本） */
 	TSharedPtr<SHotUpdatePackagingPanel> PackagingPanel;
+
+	/** 自定义打包面板 */
+	TSharedPtr<SHotUpdateCustomPackagingPanel> CustomPackagingPanel;
 
 	/** 基础版本打包面板 */
 	TSharedPtr<SHotUpdateBaseVersionPanel> BaseVersionPanel;
@@ -86,9 +93,11 @@ private:
 	/** Pak 查看器面板 */
 	TSharedPtr<SHotUpdatePakViewerPanel> PakViewerPanel;
 
-	/** 缓存的资源路径（在 PackagingPanel 创建前暂存） */
-	TArray<FString> CachedAssetPaths;
+	/** 缓存的 uasset 文件路径（在 CustomPackagingPanel 创建前暂存） */
+	TArray<FString> CachedUassetFilePaths;
+
+	/** 缓存的非资产文件路径 */
+	TArray<FString> CachedNonAssetFilePaths;
 
 	/** 缓存的打包类型 */
-	TOptional<EHotUpdatePackageType> CachedPackageType;
 };

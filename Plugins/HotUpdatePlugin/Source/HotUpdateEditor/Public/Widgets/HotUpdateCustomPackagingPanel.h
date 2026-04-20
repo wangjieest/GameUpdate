@@ -6,22 +6,23 @@
 #include "Widgets/SWidget.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Input/SComboBox.h"
-#include "Widgets/Input/SSpinBox.h"
+#include "Widgets/Views/SListView.h"
 #include "Widgets/Notifications/SNotificationList.h"
+#include "Widgets/Input/SSpinBox.h"
 #include "HotUpdateEditorTypes.h"
 
-class UHotUpdatePatchPackageBuilder;
+class UHotUpdateCustomPackageBuilder;
 class UHotUpdatePackagingCallbackHandler;
 class SProgressBar;
 
 /**
- * 热更新打包面板（更新版本）
- * 仅支持从项目打包配置读取资源列表
+ * 自定义打包面板
+ * 支持选择 uasset 文件和非资产文件两种模式，快速打出热更包进行功能测试
  */
-class HOTUPDATEEDITOR_API SHotUpdatePackagingPanel : public SCompoundWidget
+class HOTUPDATEEDITOR_API SHotUpdateCustomPackagingPanel : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SHotUpdatePackagingPanel) {}
+	SLATE_BEGIN_ARGS(SHotUpdateCustomPackagingPanel) {}
 		SLATE_ARGUMENT(TSharedPtr<SWindow>, ParentWindow)
 	SLATE_END_ARGS()
 
@@ -30,30 +31,30 @@ public:
 	/** 清理 Root 引用 */
 	void CleanupRootReferences();
 
+	/** 设置要打包的 uasset 文件路径 */
+	void SetUassetFilePaths(const TArray<FString>& InPaths);
+
+	/** 设置要打包的非资产文件路径 */
+	void SetNonAssetFilePaths(const TArray<FString>& InPaths);
+
 	/** 打包完成回调 */
 	void OnPackagingComplete(const FHotUpdatePackageResult& Result);
 
 	/** 打包进度回调 */
 	void OnPackagingProgress(const FHotUpdatePackageProgress& Progress);
 
-	/** 刷新已保存的基础版本列表 */
-	void RefreshSavedBaseVersions();
-
 private:
 	/** 创建左侧配置面板 */
 	TSharedRef<SWidget> CreateLeftPanel();
 
-	/** 创建右侧信息与进度面板 */
+	/** 创建右侧资源和进度面板 */
 	TSharedRef<SWidget> CreateRightPanel();
 
 	/** 创建基础配置区域 */
 	TSharedRef<SWidget> CreateBasicSettings();
 
-	/** 创建高级配置区域 */
-	TSharedRef<SWidget> CreateAdvancedSettings();
-
-	/** 创建增量打包配置区域 */
-	TSharedRef<SWidget> CreateIncrementalSettings();
+	/** 创建资源列表区域 */
+	TSharedRef<SWidget> CreateAssetList();
 
 	/** 创建进度和操作区域 */
 	TSharedRef<SWidget> CreateProgressAndActions();
@@ -84,30 +85,29 @@ private:
 	FText GetSelectedAndroidTextureFormatText() const;
 	EVisibility GetAndroidTextureFormatVisibility() const;
 
-	/** 分包策略选择相关 */
-	TSharedRef<SWidget> GenerateChunkStrategyComboBoxItem(TSharedPtr<EHotUpdateChunkStrategy> InItem);
-	void OnChunkStrategySelected(TSharedPtr<EHotUpdateChunkStrategy> InItem, ESelectInfo::Type SelectInfo);
-	FText GetSelectedChunkStrategyText() const;
+	/** uasset 文件选择相关 */
+	FReply OnSelectUassetFilesClicked();
+	FReply OnClearUassetClicked();
+	TSharedRef<ITableRow> GenerateUassetListItem(TSharedPtr<FString> InItem, const TSharedRef<STableViewBase>& OwnerTable);
+	FReply OnRemoveUassetClicked(TSharedPtr<FString> InItem);
+	void RefreshUassetList();
+	FText GetUassetInfoText() const;
 
-	/** 创建分包配置区域 */
-	TSharedRef<SWidget> CreateChunkSettings();
-
-	/** 更新进度条 */
-	void UpdateProgressBar(float Percent);
+	/** 非资产文件选择相关 */
+	FReply OnSelectNonAssetFilesClicked();
+	FReply OnClearNonAssetClicked();
+	TSharedRef<ITableRow> GenerateNonAssetListItem(TSharedPtr<FString> InItem, const TSharedRef<STableViewBase>& OwnerTable);
+	FReply OnRemoveNonAssetClicked(TSharedPtr<FString> InItem);
+	void RefreshNonAssetList();
+	FText GetNonAssetInfoText() const;
 
 	/** 从UI更新打包配置 */
 	void UpdatePackageConfigFromUI();
 
 	/** 显示通知 */
 	void ShowNotification(const FText& Message, SNotificationItem::ECompletionState State);
-
-	/** 显示成功通知（带超链接） */
 	void ShowSuccessNotification(const FText& Message, const FString& OutputPath);
-
-	/** 显示错误通知（带按钮） */
 	void ShowErrorNotification(const FText& Message);
-
-	/** 显示进度通知 */
 	void ShowProgressNotification(const FText& Message, bool bShowCancelButton);
 
 private:
@@ -117,8 +117,14 @@ private:
 	/** 打包配置 */
 	FHotUpdatePackageConfig PackageConfig;
 
+	/** uasset 文件路径列表 */
+	TArray<FString> UassetFilePaths;
+
+	/** 非资产文件路径列表 */
+	TArray<FString> NonAssetFilePaths;
+
 	/** 更新包构建器 */
-	TObjectPtr<UHotUpdatePatchPackageBuilder> PatchPackageBuilder;
+	TObjectPtr<UHotUpdateCustomPackageBuilder> CustomPackageBuilder;
 
 	/** 回调处理器 */
 	TObjectPtr<UHotUpdatePackagingCallbackHandler> CallbackHandler;
@@ -130,9 +136,6 @@ private:
 	TSharedPtr<SNotificationItem> ProgressNotification;
 
 	// ===== UI控件 =====
-	/** 版本号输入框 */
-	TSharedPtr<SEditableText> VersionTextBox;
-
 	/** 输出目录输入框 */
 	TSharedPtr<SEditableText> OutputDirTextBox;
 
@@ -163,43 +166,30 @@ private:
 	/** 当前选择的 Android 纹理格式 */
 	TSharedPtr<EHotUpdateAndroidTextureFormat> SelectedAndroidTextureFormat;
 
+	/** uasset 列表视图 */
+	TSharedPtr<SListView<TSharedPtr<FString>>> UassetListView;
+
+	/** uasset 列表项 */
+	TArray<TSharedPtr<FString>> UassetListItems;
+
+	/** 非资产列表视图 */
+	TSharedPtr<SListView<TSharedPtr<FString>>> NonAssetListView;
+
+	/** 非资产列表项 */
+	TArray<TSharedPtr<FString>> NonAssetListItems;
+
 	/** 打包按钮 */
 	TSharedPtr<SButton> PackageButton;
 
 	/** 取消按钮 */
 	TSharedPtr<SButton> CancelButton;
 
-	/** 分包策略下拉框 */
-	TSharedPtr<SComboBox<TSharedPtr<EHotUpdateChunkStrategy>>> ChunkStrategyComboBox;
-
-	/** 分包策略选项列表 */
-	TArray<TSharedPtr<EHotUpdateChunkStrategy>> ChunkStrategyOptions;
-
-	/** 当前选择的分包策略 */
-	TSharedPtr<EHotUpdateChunkStrategy> SelectedChunkStrategy;
-
-	/** 按大小分包的最大 Chunk 大小输入框 */
-	TSharedPtr<SSpinBox<float>> MaxChunkSizeSpinBox;
-
 	/** 跳过 Cook 复选框 */
 	TSharedPtr<SCheckBox> SkipCookCheckBox;
-
-	/** 增量 Cook 复选框 */
-	TSharedPtr<SCheckBox> IncrementalCookCheckBox;
 
 	/** 跳过编译复选框 */
 	TSharedPtr<SCheckBox> SkipBuildCheckBox;
 
-	/** 版本选择下拉框 */
-	TSharedPtr<SComboBox<TSharedPtr<FHotUpdateVersionSelectItem>>> VersionSelectComboBox;
-
-	/** 版本选择选项列表 */
-	TArray<TSharedPtr<FHotUpdateVersionSelectItem>> VersionSelectOptions;
-
-	/** 当前选择的版本 */
-	TSharedPtr<FHotUpdateVersionSelectItem> SelectedVersion;
-
-private:
-	/** 刷新版本选择选项 */
-	void RefreshVersionSelectOptions();
+	/** Pak 优先级输入 */
+	TSharedPtr<SSpinBox<float>> PakPrioritySpinBox;
 };

@@ -9,16 +9,6 @@
 
 class UHotUpdatePatchPackageBuilder;
 
-/**
- * 打包资源类型（资源收集方式）
- */
-UENUM(BlueprintType)
-enum class EHotUpdatePackageType : uint8
-{
-	Asset           UMETA(DisplayName = "单个资源"),
-	Directory       UMETA(DisplayName = "目录"),
-	FromPackagingSettings UMETA(DisplayName = "从项目打包配置读取")
-};
 
 /**
  * 打包模式（基础包 vs 热更包）
@@ -434,9 +424,6 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
 	FFilePath BaseManifestPath;
 
-	/// 资源收集类型
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
-	EHotUpdatePackageType PackageType;
 
 	/// 资源路径列表
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
@@ -496,9 +483,12 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FullPackage")
 	FDirectoryPath BaseContainerDirectory;
 
+	/// 预收集的完整资源列表（含依赖，由游戏线程填充，后台线程直接使用）
+	/// 非 UPROPERTY，仅用于构建流程内部传递，不需要序列化
+	TArray<FString> PreCollectedAssetPaths;
+
 	FHotUpdatePatchPackageConfig()
 		: Platform(EHotUpdatePlatform::Windows)
-		, PackageType(EHotUpdatePackageType::FromPackagingSettings)
 		, bIncludeDependencies(true)
 		, bSkipCook(false)
 		, bIncrementalCook(false)
@@ -873,9 +863,6 @@ struct HOTUPDATEEDITOR_API FHotUpdatePackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
 	EHotUpdatePlatform Platform;
 
-	/// 打包类型
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
-	EHotUpdatePackageType PackageType;
 
 	/// 资源路径列表
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
@@ -939,7 +926,6 @@ struct HOTUPDATEEDITOR_API FHotUpdatePackageConfig
 
 	FHotUpdatePackageConfig()
 		: Platform(EHotUpdatePlatform::Windows)
-		, PackageType(EHotUpdatePackageType::FromPackagingSettings)
 		, OutputFormat(EHotUpdateOutputFormat::Pak)
 		, bEnableCompression(true)
 		, CompressionLevel(4)
@@ -997,3 +983,95 @@ struct HOTUPDATEEDITOR_API FHotUpdatePackageResult
 	{
 	}
 };
+/**
+ * 自定义打包配置
+ */
+USTRUCT(BlueprintType)
+struct HOTUPDATEEDITOR_API FHotUpdateCustomPackageConfig
+{
+	GENERATED_BODY()
+
+	/// 版本号（自动生成时间戳格式: custom_YYYYMMDD_HHMMSS）
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Version")
+	FString PatchVersion;
+
+	/// 目标平台
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
+	EHotUpdatePlatform Platform;
+
+	/// uasset 文件路径列表（磁盘绝对路径）
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
+	TArray<FString> UassetFilePaths;
+
+	/// 非资产文件路径列表（磁盘绝对路径）
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
+	TArray<FString> NonAssetFilePaths;
+
+	/// 输出目录
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
+	FDirectoryPath OutputDirectory;
+
+	/// IoStore 配置
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "IoStore")
+	FHotUpdateIoStoreConfig IoStoreConfig;
+
+	/// 是否跳过 Cook 步骤
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
+	bool bSkipCook = false;
+
+	/// 是否跳过编译步骤
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
+	bool bSkipBuild = false;
+
+	/// Android 纹理格式
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Android")
+	EHotUpdateAndroidTextureFormat AndroidTextureFormat = EHotUpdateAndroidTextureFormat::ASTC;
+
+		/// Pak 挂载优先级（容器名 _n_P 中的 n，0=默认_P，数字越大优先级越阛）
+		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging", meta = (ClampMin = "0"))
+		int32 PakPriority = 10;
+	};
+
+/**
+ * 自定义打包结果
+ */
+USTRUCT(BlueprintType)
+struct HOTUPDATEEDITOR_API FHotUpdateCustomPackageResult
+{
+	GENERATED_BODY()
+
+	/// 是否成功
+	UPROPERTY(BlueprintReadOnly, Category = "Result")
+	bool bSuccess = false;
+
+	/// 错误信息
+	UPROPERTY(BlueprintReadOnly, Category = "Result")
+	FString ErrorMessage;
+
+	/// 输出目录
+	UPROPERTY(BlueprintReadOnly, Category = "Result")
+	FString OutputDirectory;
+
+	/// 版本号
+	UPROPERTY(BlueprintReadOnly, Category = "Result")
+	FString PatchVersion;
+
+	/// Pak/Utoc 文件路径
+	UPROPERTY(BlueprintReadOnly, Category = "Result")
+	FString PatchUtocPath;
+
+	/// 打包大小
+	UPROPERTY(BlueprintReadOnly, Category = "Result")
+	int64 PatchSize = 0;
+
+	/// 资源数量
+	UPROPERTY(BlueprintReadOnly, Category = "Result")
+	int32 AssetCount = 0;
+
+	/// Manifest 文件路径
+	UPROPERTY(BlueprintReadOnly, Category = "Result")
+	FString ManifestFilePath;
+};
+
+/** 自定义打包完成委托 */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCustomPackageCompleteDelegate, const FHotUpdateCustomPackageResult&, Result);

@@ -15,8 +15,8 @@ public:
 	static void Unregister();
 
 private:
-	/** 执行热更新打包 */
-	static void ExecuteHotUpdatePackage(TArray<FString> AssetPaths, EHotUpdatePackageType PackageType);
+	/** 执行热更新打包（接收 UE 包路径，内部转换为磁盘路径） */
+	static void ExecuteHotUpdatePackage(TArray<FString> PackagePaths);
 
 	/** 获取选中的资源路径 */
 	static TArray<FString> GetSelectedAssetPaths(const TArray<struct FAssetData>& SelectedAssets);

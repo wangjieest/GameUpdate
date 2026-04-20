@@ -2,6 +2,7 @@
 
 #include "Widgets/HotUpdateMainWindow.h"
 #include "Widgets/HotUpdatePackagingPanel.h"
+#include "Widgets/HotUpdateCustomPackagingPanel.h"
 #include "Widgets/HotUpdateBaseVersionPanel.h"
 #include "Widgets/HotUpdateVersionDiffPanel.h"
 #include "Widgets/HotUpdatePakViewerPanel.h"
@@ -64,35 +65,37 @@ void SHotUpdateMainWindow::SetInitialTab(int32 TabIndex)
 	FName TabId;
 	switch (TabIndex)
 	{
-	case 0: TabId = HotUpdateTabIds::BaseVersion; break;
-	case 1: TabId = HotUpdateTabIds::Packaging;   break;
-	case 2: TabId = HotUpdateTabIds::VersionDiff;  break;
-	case 3: TabId = HotUpdateTabIds::PakViewer;    break;
-	default: TabId = HotUpdateTabIds::BaseVersion;  break;
+	case 0: TabId = HotUpdateTabIds::BaseVersion;    break;
+	case 1: TabId = HotUpdateTabIds::Packaging;      break;
+	case 2: TabId = HotUpdateTabIds::CustomPackaging; break;
+	case 3: TabId = HotUpdateTabIds::VersionDiff;    break;
+	case 4: TabId = HotUpdateTabIds::PakViewer;      break;
+	default: TabId = HotUpdateTabIds::BaseVersion;   break;
 	}
 
 	TabManager->TryInvokeTab(TabId);
 }
 
-void SHotUpdateMainWindow::SetAssetPaths(const TArray<FString>& InPaths)
+void SHotUpdateMainWindow::SetUassetFilePaths(const TArray<FString>& InPaths)
 {
-	CachedAssetPaths = InPaths;
-	if (PackagingPanel.IsValid())
+	CachedUassetFilePaths = InPaths;
+	if (CustomPackagingPanel.IsValid())
 	{
-		PackagingPanel->SetAssetPaths(InPaths);
-		CachedAssetPaths.Empty();
+		CustomPackagingPanel->SetUassetFilePaths(InPaths);
+		CachedUassetFilePaths.Empty();
 	}
 }
 
-void SHotUpdateMainWindow::SetPackageType(EHotUpdatePackageType InType)
+void SHotUpdateMainWindow::SetNonAssetFilePaths(const TArray<FString>& InPaths)
 {
-	CachedPackageType = InType;
-	if (PackagingPanel.IsValid())
+	CachedNonAssetFilePaths = InPaths;
+	if (CustomPackagingPanel.IsValid())
 	{
-		PackagingPanel->SetPackageType(InType);
-		CachedPackageType.Reset();
+		CustomPackagingPanel->SetNonAssetFilePaths(InPaths);
+		CachedNonAssetFilePaths.Empty();
 	}
 }
+
 
 void SHotUpdateMainWindow::FillWindowMenu(FMenuBuilder& MenuBuilder, const TSharedPtr<FTabManager> TabManager)
 {
@@ -104,7 +107,7 @@ void SHotUpdateMainWindow::FillWindowMenu(FMenuBuilder& MenuBuilder, const TShar
 
 TSharedRef<FTabManager::FLayout> SHotUpdateMainWindow::CreateDefaultLayout()
 {
-	return FTabManager::NewLayout("HotUpdate_MainLayout_v1")
+	return FTabManager::NewLayout("HotUpdate_MainLayout_v2")
 		->AddArea
 		(
 			FTabManager::NewPrimaryArea()
@@ -114,6 +117,7 @@ TSharedRef<FTabManager::FLayout> SHotUpdateMainWindow::CreateDefaultLayout()
 				->SetSizeCoefficient(1.0f)
 				->AddTab(HotUpdateTabIds::BaseVersion, ETabState::OpenedTab)
 				->AddTab(HotUpdateTabIds::Packaging, ETabState::OpenedTab)
+				->AddTab(HotUpdateTabIds::CustomPackaging, ETabState::OpenedTab)
 				->AddTab(HotUpdateTabIds::VersionDiff, ETabState::OpenedTab)
 				->AddTab(HotUpdateTabIds::PakViewer, ETabState::OpenedTab)
 				->SetForegroundTab(HotUpdateTabIds::BaseVersion)
@@ -135,7 +139,13 @@ void SHotUpdateMainWindow::RegisterTabSpawners(const TSharedPtr<FTabManager>& In
 	InTabManager->RegisterTabSpawner(HotUpdateTabIds::Packaging,
 		FOnSpawnTab::CreateSP(this, &SHotUpdateMainWindow::OnSpawnPackagingTab))
 		.SetDisplayName(LOCTEXT("PackagingTab", "更新版本"))
-		.SetTooltipText(LOCTEXT("PackagingTabTooltip", "热更新资源打包"))
+		.SetTooltipText(LOCTEXT("PackagingTabTooltip", "从项目打包配置读取资源进行热更新打包"))
+		.SetGroup(HotUpdateGroup);
+
+	InTabManager->RegisterTabSpawner(HotUpdateTabIds::CustomPackaging,
+		FOnSpawnTab::CreateSP(this, &SHotUpdateMainWindow::OnSpawnCustomPackagingTab))
+		.SetDisplayName(LOCTEXT("CustomPackagingTab", "自定义打包"))
+		.SetTooltipText(LOCTEXT("CustomPackagingTabTooltip", "手动选择资源或目录进行热更新打包"))
 		.SetGroup(HotUpdateGroup);
 
 	InTabManager->RegisterTabSpawner(HotUpdateTabIds::VersionDiff,
@@ -166,23 +176,30 @@ TSharedRef<SDockTab> SHotUpdateMainWindow::OnSpawnPackagingTab(const FSpawnTabAr
 {
 	SHotUpdateMainWindow* MutableThis = const_cast<SHotUpdateMainWindow*>(this);
 
-	auto Tab = SNew(SDockTab)
+	return SNew(SDockTab)
 		.TabRole(PanelTab)
 		.Label(LOCTEXT("PackagingTab", "更新版本"))
 		[
 			SAssignNew(MutableThis->PackagingPanel, SHotUpdatePackagingPanel)
 		];
+}
+
+TSharedRef<SDockTab> SHotUpdateMainWindow::OnSpawnCustomPackagingTab(const FSpawnTabArgs& Args) const
+{
+	SHotUpdateMainWindow* MutableThis = const_cast<SHotUpdateMainWindow*>(this);
+
+	auto Tab = SNew(SDockTab)
+		.TabRole(PanelTab)
+		.Label(LOCTEXT("CustomPackagingTab", "自定义打包"))
+		[
+			SAssignNew(MutableThis->CustomPackagingPanel, SHotUpdateCustomPackagingPanel)
+		];
 
 	// 应用缓存的数据
-	if (MutableThis->CachedAssetPaths.Num() > 0)
+	if (MutableThis->CachedUassetFilePaths.Num() > 0)
 	{
-		MutableThis->PackagingPanel->SetAssetPaths(MutableThis->CachedAssetPaths);
-		MutableThis->CachedAssetPaths.Empty();
-	}
-	if (MutableThis->CachedPackageType.IsSet())
-	{
-		MutableThis->PackagingPanel->SetPackageType(MutableThis->CachedPackageType.GetValue());
-		MutableThis->CachedPackageType.Reset();
+		MutableThis->CustomPackagingPanel->SetUassetFilePaths(MutableThis->CachedUassetFilePaths);
+		MutableThis->CachedUassetFilePaths.Empty();
 	}
 
 	return Tab;

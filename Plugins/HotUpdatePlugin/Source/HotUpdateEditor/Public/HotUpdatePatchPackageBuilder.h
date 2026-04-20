@@ -7,12 +7,13 @@
 #include "HotUpdateIoStoreBuilder.h"
 #include "HotUpdateChunkManager.h"
 #include "HotUpdateVersionManager.h"
+#include "HotUpdatePackageHelper.h"
 #include "HAL/CriticalSection.h"
 #include <atomic>
 #include "HotUpdatePatchPackageBuilder.generated.h"
 
 /**
- * 更新包构建器
+ * 热更新打包构建器
  * 基于基础包生成差异更新包
  */
 UCLASS(BlueprintType)
@@ -23,45 +24,31 @@ class HOTUPDATEEDITOR_API UHotUpdatePatchPackageBuilder : public UObject
 public:
 	UHotUpdatePatchPackageBuilder();
 
-	/**
-	 * 构建更新包
-	 */
+	/** 构建更新包 */
 	UFUNCTION(BlueprintCallable, Category = "Hot Update|PatchPackage")
 	FHotUpdatePatchPackageResult BuildPatchPackage(const FHotUpdatePatchPackageConfig& Config);
 
-	/**
-	 * 异步构建更新包
-	 */
+	/** 异步构建更新包 */
 	UFUNCTION(BlueprintCallable, Category = "Hot Update|PatchPackage")
 	void BuildPatchPackageAsync(const FHotUpdatePatchPackageConfig& Config);
 
-	/**
-	 * 预览差异
-	 */
+	/** 预览差异 */
 	UFUNCTION(BlueprintCallable, Category = "Hot Update|PatchPackage")
 	FHotUpdateDiffReport PreviewDiff(const FHotUpdatePatchPackageConfig& Config);
 
-	/**
-	 * 取消构建
-	 */
+	/** 取消构建 */
 	UFUNCTION(BlueprintCallable, Category = "Hot Update|PatchPackage")
 	void CancelBuild();
 
-	/**
-	 * 是否正在构建
-	 */
+	/** 是否正在构建 */
 	UFUNCTION(BlueprintPure, Category = "Hot Update|PatchPackage")
 	bool IsBuilding() const { return bIsBuilding; }
 
-	/**
-	 * 获取当前进度
-	 */
+	/** 获取当前进度 */
 	UFUNCTION(BlueprintPure, Category = "Hot Update|PatchPackage")
 	FHotUpdatePackageProgress GetCurrentProgress() const;
 
-	/**
-	 * 验证配置
-	 */
+	/** 验证配置 */
 	bool ValidateConfig(const FHotUpdatePatchPackageConfig& Config, FString& OutErrorMessage);
 
 	// 进度委托
@@ -72,67 +59,29 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Hot Update|PatchPackage")
 	FOnPatchPackageCompleteDelegate OnComplete;
 
-	/**
-	 * 将资源路径转换为文件名（相对路径，带后缀）
-	 * 如 "/Game/Startup/umg_hotupdate" -> "Game/Startup/umg_hotupdate.uasset"
-	 * 如 "/Game/Maps/MainMenu" -> "Game/Maps/MainMenu.umap"
-	 */
-	static FString ConvertAssetPathToFileName(const FString& AssetPath, const FString& CookedPlatformDir);
+	/** 委托给 Helper */
+	static FString ConvertAssetPathToFileName(const FString& AssetPath, const FString& CookedPlatformDir)
+	{ return UHotUpdatePackageHelper::ConvertAssetPathToFileName(AssetPath, CookedPlatformDir); }
 
-
-	/**
-	 * 将文件名（相对路径，带后缀）转换回资源路径
-	 * 如 "Game/Startup/umg_hotupdate.uasset" -> "/Game/Startup/umg_hotupdate"
-	 * 如 "Game/Maps/MainMenu.umap" -> "/Game/Maps/MainMenu"
-	 * 这是 ConvertAssetPathToFileName 的逆操作，用于归一化 Manifest 中的键格式
-	 */
-	static FString FileNameToAssetPath(const FString& FileName);
-	/**
-	 * 获取资源磁盘路径
-	 */
-		static FString GetAssetDiskPath(const FString& AssetPath, const FString& CookedPlatformDir);
-
-	/**
-	 * 获取资源源文件磁盘路径（Content 目录下的 .uasset/.umap）
-	 * 用于 Hash 计算，避免 Cooked 文件因时间戳等原因 Hash 不稳定
-	 */
-	static FString GetAssetSourcePath(const FString& AssetPath);
+	/** 委托给 Helper */
+	static FString FileNameToAssetPath(const FString& FileName)
+	{ return UHotUpdatePackageHelper::FileNameToAssetPath(FileName); }
 
 private:
-	/**
-	 * Cook 资源
-	 * 使用子进程执行 Cook，避免在当前 Editor 进程中调用 CookCommandlet 导致的平台冲突
-	 * @param AssetsToCook 指定要 Cook 的资源路径列表，为空则全量 Cook
-	 */
-	bool CookAssets(const TArray<FString>& AssetsToCook = TArray<FString>());
-
-	/**
-	 * 编译项目
-	 * 使用 UAT BuildCookRun -build 编译游戏代码
-	 * 必须在 Cook 之前调用，确保 Cook 使用最新的代码
-	 */
-	bool CompileProject();
-
-	/**
-	 * 收集资源
-	 */
+	/** 收集资源 */
 	bool CollectAssets(
 		TArray<FString>& OutAssetPaths,
 		TMap<FString, FString>& OutAssetDiskPaths,
 		TMap<FString, FString>& OutAssetSourcePaths,
 		FString& OutErrorMessage);
 
-	/**
-	 * 加载基础版本 Manifest
-	 */
+	/** 加载基础版本 Manifest */
 	bool LoadBaseManifest(
 		const FString& ManifestPath,
 		TMap<FString, FString>& OutAssetHashes,
 		TMap<FString, int64>& OutAssetSizes);
 
-	/**
-	 * 计算差异
-	 */
+	/** 计算差异 */
 	bool ComputeDiff(
 		const TArray<FString>& CurrentAssets,
 		const TMap<FString, FString>& CurrentHashes,
@@ -140,14 +89,7 @@ private:
 		TArray<FString>& OutChangedAssets,
 		FHotUpdateDiffReport& OutReport);
 
-	/**
-	 * 加载之前的 Patch Manifest（用于链式 Patch）
-	 * @param ManifestPath Manifest 文件路径
-	 * @param OutContainers 输出的容器信息列表
-	 * @param OutPatchFiles 输出的 patch 文件信息（source=patch 的文件）
-	 * @param OutPatchVersion patch 版本号
-	 * @return 是否成功加载
-	 */
+	/** 加载之前的 Patch Manifest（链式 Patch） */
 	bool LoadPreviousPatchManifest(
 		const FString& ManifestPath,
 		TArray<FHotUpdateContainerInfo>& OutContainers,
@@ -155,43 +97,20 @@ private:
 		TMap<FString, int64>& OutPatchFilesSize,
 		FString& OutPatchVersion);
 
-	/**
-	 * 加载基础版本容器信息（用于全量热更新）
-	 * @param ContainerDirectory 基础版本容器目录
-	 * @param OutContainers 输出的容器信息列表
-	 * @param OutFilesHash 输出的文件 Hash 信息
-	 * @param OutFilesSize 输出的文件大小信息
-	 * @return 是否成功加载
-	 */
+	/** 加载基础版本容器信息（全量热更新） */
 	bool LoadBaseContainers(
 		const FString& ContainerDirectory,
 		TArray<FHotUpdateContainerInfo>& OutContainers,
 		TMap<FString, FString>& OutFilesHash,
 		TMap<FString, int64>& OutFilesSize);
 
-	/**
-	 * 复制容器文件到输出目录
-	 * @param SourceDir 源目录
-	 * @param DestDir 目标目录
-	 * @param Containers 要复制的容器列表
-	 * @return 成功复制的容器数量
-	 */
+	/** 复制容器文件到输出目录 */
 	int32 CopyContainerFiles(
 		const FString& SourceDir,
 		const FString& DestDir,
 		const TArray<FHotUpdateContainerInfo>& Containers);
 
-	/**
-	 * 生成 Manifest
-	 * @param ManifestPath Manifest 输出路径
-	 * @param PatchUtocPath Patch .utoc 文件路径
-	 * @param PatchUcasPath Patch .ucas 文件路径
-	 * @param ChangedAssetPaths 变更资源路径列表（新增+修改）
-	 * @param ChangedAssetDiskPaths 变更资源的磁盘路径
-	 * @param BaseAssetHashes 基础版本资源 Hash（用于未变更资源）
-	 * @param BaseAssetSizes 基础版本资源大小（用于未变更资源）
-	 * @param DiffReport 差异报告
-	 */
+	/** 生成 Manifest */
 	bool GenerateManifest(
 		const FString& ManifestPath,
 		const FString& PatchUtocPath,
@@ -209,9 +128,7 @@ private:
 		const TMap<FString, FString>& BaseContainerFilesHash = TMap<FString, FString>(),
 		const TMap<FString, int64>& BaseContainerFilesSize = TMap<FString, int64>());
 
-	/**
-	 * 更新进度
-	 */
+	/** 更新进度 */
 	void UpdateProgress(
 		const FString& Stage,
 		const FString& CurrentFile,

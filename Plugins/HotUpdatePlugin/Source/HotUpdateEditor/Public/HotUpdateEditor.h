@@ -13,8 +13,8 @@ DECLARE_LOG_CATEGORY_EXTERN(LogHotUpdateEditor, Verbose, All);
 struct FHotUpdatePendingData
 {
 	static int32 InitialTab;
-	static TArray<FString> AssetPaths;
-	static EHotUpdatePackageType PackageType;
+	static TArray<FString> UassetFilePaths;
+	static TArray<FString> NonAssetFilePaths;
 
 	/** 标记 Tab 已关闭，需要重新注册 spawner */
 	static bool bNeedReRegisterSpawner;
@@ -22,14 +22,14 @@ struct FHotUpdatePendingData
 	static void Reset()
 	{
 		InitialTab = 0;
-		AssetPaths.Empty();
-		PackageType = EHotUpdatePackageType::Asset;
+		UassetFilePaths.Empty();
+		NonAssetFilePaths.Empty();
 	}
 };
 
 /**
  * 打开热更新工具窗口
  * 处理 Tab 关闭后重新注册 spawner 的逻辑，所有入口点都应使用此函数
- * @param InitialTab 初始显示的子标签索引（0=基础版本, 1=更新版本, 2=版本比较, 3=Pak查看器）
+ * @param InitialTab 初始显示的子标签索引（0=基础版本, 1=更新版本, 2=自定义打包, 3=版本比较, 4=Pak查看器）
  */
 HOTUPDATEEDITOR_API void HotUpdateOpenTab(int32 InitialTab = 0);

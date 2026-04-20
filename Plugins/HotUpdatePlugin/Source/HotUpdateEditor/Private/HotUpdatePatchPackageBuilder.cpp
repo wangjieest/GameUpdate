@@ -816,127 +816,25 @@ void UHotUpdatePatchPackageBuilder::BuildPatchPackageAsync(const FHotUpdatePatch
 
 	TWeakObjectPtr<UHotUpdatePatchPackageBuilder> WeakThis(this);
 
-		BuildTask = Async(EAsyncExecution::Thread, [WeakThis, ConfigForThread]()
+	BuildTask = Async(EAsyncExecution::Thread, [WeakThis, ConfigForThread]()
+	{
+		UHotUpdatePatchPackageBuilder* Builder = WeakThis.Get();
+		if (!Builder)
 		{
-			UHotUpdatePatchPackageBuilder* Builder = WeakThis.Get();
-			if (!Builder)
+			return;
+		}
+
+		FHotUpdatePatchPackageResult Result = Builder->BuildPatchPackage(ConfigForThread);
+
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, Result]()
+		{
+			UHotUpdatePatchPackageBuilder* PinnedBuilder = WeakThis.Get();
+			if (IsValid(PinnedBuilder))
 			{
-				return;
+				PinnedBuilder->OnComplete.Broadcast(Result);
 			}
-
-			// RAII 保护，确保异常情况下 bIsBuilding 会被重置
-			struct FBuildGuard
-			{
-				UHotUpdatePatchPackageBuilder* Builder;
-				FHotUpdatePatchPackageResult Result;
-				bool bNormalCompletion = false;
-				FBuildGuard(UHotUpdatePatchPackageBuilder* InBuilder) : Builder(InBuilder) {}
-				~FBuildGuard()
-				{
-					if (Builder && Builder->bIsBuilding && !bNormalCompletion)
-					{
-						Builder->bIsBuilding = false;
-						UE_LOG(LogHotUpdateEditor, Warning, TEXT("Patch构建异常终止，已重置构建状态"));
-
-						// 安全地传递结果到 GameThread
-						UHotUpdatePatchPackageBuilder* GuardBuilder = Builder;
-						FHotUpdateDiffReport DiffReportCopy = Result.DiffReport;
-						TArray<FHotUpdateContainerInfo> ChainPatchContainersCopy = Result.ChainPatchContainers;
-						TArray<FString> PatchVersionChainCopy = Result.PatchVersionChain;
-						AsyncTask(ENamedThreads::GameThread, [GuardBuilder,
-							bSuccess = Result.bSuccess,
-							OutputDirectory = Result.OutputDirectory,
-							PatchUtocPath = Result.PatchUtocPath,
-							PatchUcasPath = Result.PatchUcasPath,
-							ManifestFilePath = Result.ManifestFilePath,
-							PatchVersion = Result.PatchVersion,
-							BaseVersion = Result.BaseVersion,
-							DiffReport = MoveTemp(DiffReportCopy),
-							ChangedAssetCount = Result.ChangedAssetCount,
-							PatchSize = Result.PatchSize,
-							bRequiresBasePackage = Result.bRequiresBasePackage,
-							bIsChainPatch = Result.bIsChainPatch,
-							ChainPatchContainers = MoveTemp(ChainPatchContainersCopy),
-							PatchVersionChain = MoveTemp(PatchVersionChainCopy),
-							ErrorMessage = Result.ErrorMessage]()
-						{
-							if (IsValid(GuardBuilder))
-							{
-								FHotUpdatePatchPackageResult GameThreadResult;
-								GameThreadResult.bSuccess = bSuccess;
-								GameThreadResult.OutputDirectory = OutputDirectory;
-								GameThreadResult.PatchUtocPath = PatchUtocPath;
-								GameThreadResult.PatchUcasPath = PatchUcasPath;
-								GameThreadResult.ManifestFilePath = ManifestFilePath;
-								GameThreadResult.PatchVersion = PatchVersion;
-								GameThreadResult.BaseVersion = BaseVersion;
-								GameThreadResult.DiffReport = DiffReport;
-								GameThreadResult.ChangedAssetCount = ChangedAssetCount;
-								GameThreadResult.PatchSize = PatchSize;
-								GameThreadResult.bRequiresBasePackage = bRequiresBasePackage;
-								GameThreadResult.bIsChainPatch = bIsChainPatch;
-								GameThreadResult.ChainPatchContainers = ChainPatchContainers;
-								GameThreadResult.PatchVersionChain = PatchVersionChain;
-								GameThreadResult.ErrorMessage = ErrorMessage;
-
-								GuardBuilder->OnComplete.Broadcast(GameThreadResult);
-							}
-						});
-					}
-				}
-			};
-			FBuildGuard Guard(Builder);
-
-			FHotUpdatePatchPackageResult Result = Builder->BuildPatchPackage(ConfigForThread);
-			Guard.Result = Result;
-			Guard.bNormalCompletion = true;
-
-			// 正常完成时，Guard 析构不会执行额外操作（因为 bIsBuilding 已被 BuildPatchPackage 设置为 false）
-			// 安全地传递结果到 GameThread
-			FHotUpdateDiffReport DiffReportCopy = Result.DiffReport;
-			TArray<FHotUpdateContainerInfo> ChainPatchContainersCopy = Result.ChainPatchContainers;
-			TArray<FString> PatchVersionChainCopy = Result.PatchVersionChain;
-			AsyncTask(ENamedThreads::GameThread, [WeakThis,
-				bSuccess = Result.bSuccess,
-				OutputDirectory = Result.OutputDirectory,
-				PatchUtocPath = Result.PatchUtocPath,
-				PatchUcasPath = Result.PatchUcasPath,
-				ManifestFilePath = Result.ManifestFilePath,
-				PatchVersion = Result.PatchVersion,
-				BaseVersion = Result.BaseVersion,
-				DiffReport = MoveTemp(DiffReportCopy),
-				ChangedAssetCount = Result.ChangedAssetCount,
-				PatchSize = Result.PatchSize,
-				bRequiresBasePackage = Result.bRequiresBasePackage,
-				bIsChainPatch = Result.bIsChainPatch,
-				ChainPatchContainers = MoveTemp(ChainPatchContainersCopy),
-				PatchVersionChain = MoveTemp(PatchVersionChainCopy),
-				ErrorMessage = Result.ErrorMessage]()
-			{
-				UHotUpdatePatchPackageBuilder* PinnedBuilder = WeakThis.Get();
-				if (IsValid(PinnedBuilder))
-				{
-					FHotUpdatePatchPackageResult GameThreadResult;
-					GameThreadResult.bSuccess = bSuccess;
-					GameThreadResult.OutputDirectory = OutputDirectory;
-					GameThreadResult.PatchUtocPath = PatchUtocPath;
-					GameThreadResult.PatchUcasPath = PatchUcasPath;
-					GameThreadResult.ManifestFilePath = ManifestFilePath;
-					GameThreadResult.PatchVersion = PatchVersion;
-					GameThreadResult.BaseVersion = BaseVersion;
-					GameThreadResult.DiffReport = DiffReport;
-					GameThreadResult.ChangedAssetCount = ChangedAssetCount;
-					GameThreadResult.PatchSize = PatchSize;
-					GameThreadResult.bRequiresBasePackage = bRequiresBasePackage;
-					GameThreadResult.bIsChainPatch = bIsChainPatch;
-					GameThreadResult.ChainPatchContainers = ChainPatchContainers;
-					GameThreadResult.PatchVersionChain = PatchVersionChain;
-					GameThreadResult.ErrorMessage = ErrorMessage;
-
-					PinnedBuilder->OnComplete.Broadcast(GameThreadResult);
-				}
-			});
 		});
+	});
 }
 
 FHotUpdateDiffReport UHotUpdatePatchPackageBuilder::PreviewDiff(const FHotUpdatePatchPackageConfig& Config)

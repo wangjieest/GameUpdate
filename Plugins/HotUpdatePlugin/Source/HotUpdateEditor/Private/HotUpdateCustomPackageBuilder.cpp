@@ -420,27 +420,12 @@ void UHotUpdateCustomPackageBuilder::BuildCustomPackageAsync(const FHotUpdateCus
 		Guard.Result = Result;
 		Guard.bNormalCompletion = true;
 
-		AsyncTask(ENamedThreads::GameThread, [WeakThis,
-			bSuccess = Result.bSuccess,
-			ErrorMessage = Result.ErrorMessage,
-			OutputDirectory = Result.OutputDirectory,
-			PatchVersion = Result.PatchVersion,
-			PatchUtocPath = Result.PatchUtocPath,
-			PatchSize = Result.PatchSize,
-			AssetCount = Result.AssetCount]()
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, Result]()
 		{
 			UHotUpdateCustomPackageBuilder* PinnedBuilder = WeakThis.Get();
 			if (IsValid(PinnedBuilder))
 			{
-				FHotUpdateCustomPackageResult GameThreadResult;
-				GameThreadResult.bSuccess = bSuccess;
-				GameThreadResult.ErrorMessage = ErrorMessage;
-				GameThreadResult.OutputDirectory = OutputDirectory;
-				GameThreadResult.PatchVersion = PatchVersion;
-				GameThreadResult.PatchUtocPath = PatchUtocPath;
-				GameThreadResult.PatchSize = PatchSize;
-				GameThreadResult.AssetCount = AssetCount;
-				PinnedBuilder->OnComplete.Broadcast(GameThreadResult);
+				PinnedBuilder->OnComplete.Broadcast(Result);
 			}
 		});
 	});

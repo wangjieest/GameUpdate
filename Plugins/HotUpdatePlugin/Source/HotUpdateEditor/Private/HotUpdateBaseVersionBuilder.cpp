@@ -1042,11 +1042,8 @@ TArray<FHotUpdateContainerInfo> UHotUpdateBaseVersionBuilder::CollectContainerIn
 			}
 		};
 
-	// 遍历 Content/Paks 目录（首包资源：pakchunk0, global）
-	FString PaksDir = FPaths::Combine(PlatformDir, FApp::GetProjectName(), TEXT("Content"), TEXT("Paks"));
-	CollectContainers(PaksDir, PlatformDir, EHotUpdateContainerType::Base);
-
 	// 遍历热更资源目录（StripExtraPakChunks 移出的 pakchunk1+）
+	// 注意：基础包（pakchunk0）在 BaseVersionBuilds 目录，不写入热更版本的 manifest
 	FString HotUpdatePaksDir = FPaths::Combine(VersionDir, TEXT("Paks"));
 	CollectContainers(HotUpdatePaksDir, VersionDir, EHotUpdateContainerType::Patch);
 

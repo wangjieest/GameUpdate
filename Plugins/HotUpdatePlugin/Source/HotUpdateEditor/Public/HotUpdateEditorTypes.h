@@ -61,10 +61,7 @@ UENUM(BlueprintType)
 enum class EHotUpdateChunkStrategy : uint8
 {
 	None            UMETA(DisplayName = "不分包（所有资源打包成一个Chunk）"),
-	Size            UMETA(DisplayName = "按大小分包"),
-	Directory       UMETA(DisplayName = "按目录分包"),
-	PrimaryAsset    UMETA(DisplayName = "UE5标准分包"),
-	Hybrid          UMETA(DisplayName = "混合模式（目录优先+其余按大小）")
+	Size            UMETA(DisplayName = "按大小分包")
 };
 
 /**
@@ -118,58 +115,6 @@ struct HOTUPDATEEDITOR_API FHotUpdateVersionSelectItem
 };
 
 /**
- * 目录分包规则
- * 定义特定目录如何单独分包
- */
-USTRUCT(BlueprintType)
-struct HOTUPDATEEDITOR_API FHotUpdateDirectoryChunkRule
-{
-	GENERATED_BODY()
-
-	/// 要单独分包的目录路径（如 "/Game/Maps", "/Game/Textures"）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Directory")
-	FString DirectoryPath;
-
-	/// Chunk 名称（如 "Maps", "Textures"）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Directory")
-	FString ChunkName;
-
-	/// 指定 Chunk ID（-1 表示自动分配）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Directory", meta = (ClampMin = "-1"))
-	int32 ChunkId;
-
-	/// 加载优先级（越小越先加载）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Directory", meta = (ClampMin = "0"))
-	int32 Priority;
-
-	/// 该目录 Chunk 的最大大小（MB），0 表示无限制
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Directory", meta = (ClampMin = "0"))
-	int32 MaxSizeMB;
-
-	/// 是否递归匹配子目录
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Directory")
-	bool bRecursive;
-
-	/// 排除的子目录列表
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Directory")
-	TArray<FString> ExcludedSubDirs;
-
-	FHotUpdateDirectoryChunkRule()
-		: ChunkId(-1)
-		, Priority(10)
-		, MaxSizeMB(0)
-		, bRecursive(true)
-	{
-	}
-
-	/// 验证规则是否有效
-	bool IsValid() const
-	{
-		return !DirectoryPath.IsEmpty() && !ChunkName.IsEmpty();
-	}
-};
-
-/**
  * 按大小分包的详细配置
  */
 USTRUCT(BlueprintType)
@@ -217,17 +162,9 @@ struct HOTUPDATEEDITOR_API FHotUpdateChunkAnalysisConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk")
 	EHotUpdateChunkStrategy ChunkStrategy;
 
-	/// 最大 Chunk 大小（MB），0 表示无限制（用于 Size 策略）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk", meta = (ClampMin = "0"))
-	int32 MaxChunkSizeMB;
-
 	/// 按大小分包的详细配置
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk|Size")
 	FHotUpdateSizeBasedChunkConfig SizeBasedConfig;
-
-	/// 目录分包规则列表（用于 Directory 和 Hybrid 策略）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk|Directory")
-	TArray<FHotUpdateDirectoryChunkRule> DirectoryChunkRules;
 
 	/// 是否分析依赖关系
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk")
@@ -250,8 +187,7 @@ struct HOTUPDATEEDITOR_API FHotUpdateChunkAnalysisConfig
 	int32 DefaultChunkId;
 
 	FHotUpdateChunkAnalysisConfig()
-		: ChunkStrategy(EHotUpdateChunkStrategy::PrimaryAsset)
-		, MaxChunkSizeMB(256)
+		: ChunkStrategy(EHotUpdateChunkStrategy::Size)
 		, bAnalyzeDependencies(true)
 		, BaseChunkIdStart(0)
 		, PatchChunkIdStart(10000)
@@ -327,7 +263,7 @@ struct HOTUPDATEEDITOR_API FHotUpdateMinimalPackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MinimalPackage|ChunkSplitting")
 	EHotUpdateChunkStrategy PatchChunkStrategy;
 
-	/// 分包策略配置（MaxChunkSizeMB、DirectoryChunkRules 等）
+	/// 分包策略配置
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MinimalPackage|ChunkSplitting")
 	FHotUpdateChunkAnalysisConfig PatchChunkConfig;
 
@@ -1009,7 +945,7 @@ struct HOTUPDATEEDITOR_API FHotUpdatePackageConfig
 		, bIncludeDependencies(true)
 		, bGenerateManifest(true)
 		, ChunkId(-1)
-		, ChunkStrategy(EHotUpdateChunkStrategy::PrimaryAsset)
+		, ChunkStrategy(EHotUpdateChunkStrategy::Size)
 		, MaxChunkSizeMB(256)
 		, PackagingMode(EHotUpdatePackagingMode::BasePackage)
 		, AndroidTextureFormat(EHotUpdateAndroidTextureFormat::ETC2)

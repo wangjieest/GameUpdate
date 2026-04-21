@@ -154,6 +154,24 @@ void UHotUpdateBaseVersionBuilder::BuildBaseVersion(const FHotUpdateBaseVersionB
 	// 直接赋值 CurrentConfig 后在后台线程读取可能导致 FString 内部缓冲区的线程可见性问题
 	FHotUpdateBaseVersionBuildConfig SafeConfig = Config;
 
+	// 在游戏线程预收集资源数据，避免后台线程访问 AssetRegistry
+	if (SafeConfig.MinimalPackageConfig.bEnableMinimalPackage)
+	{
+		UE_LOG(LogHotUpdateEditor, Log, TEXT("在游戏线程预收集最小包资源数据..."));
+
+		TArray<FString> AllAssetPaths = CollectAllAssetPaths();
+
+		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
+
+		TArray<FString> PatchAssetPaths;
+		ApplyMinimalPackageFilter(AllAssetPaths, PatchAssetPaths, AssetRegistry);
+
+		SafeConfig.PreCollectedPatchAssetPaths = PatchAssetPaths;
+
+		UE_LOG(LogHotUpdateEditor, Log, TEXT("预收集完成，%d 个热更资产"), PatchAssetPaths.Num());
+	}
+
 	if (SafeConfig.bSynchronousMode)
 	{
 		CurrentConfig = SafeConfig;
@@ -565,16 +583,9 @@ void UHotUpdateBaseVersionBuilder::PreComputeChunkMapping()
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始预计算 Chunk 分配，策略: %s"),
 		*UEnum::GetValueAsString(CurrentConfig.MinimalPackageConfig.PatchChunkStrategy));
 
-	// 1. 获取 AssetRegistry
-	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
+	TArray<FString> PatchAssetPaths = CurrentConfig.PreCollectedPatchAssetPaths;
 
-	// 2. 收集所有资产路径
-	TArray<FString> AllAssetPaths = CollectAllAssetPaths();
-
-	// 3. 应用最小包过滤（得到白名单和热更资产）
-	TArray<FString> PatchAssetPaths;
-	ApplyMinimalPackageFilter(AllAssetPaths, PatchAssetPaths, AssetRegistry);
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("使用预收集的热更资源列表: %d 个资产"), PatchAssetPaths.Num());
 
 	if (PatchAssetPaths.Num() == 0)
 	{
@@ -1033,6 +1044,26 @@ void UHotUpdateBaseVersionBuilder::ApplyMinimalPackageFilter(
 	UE_LOG(LogHotUpdateEditor, Log,
 		TEXT("最小包过滤完成: 白名单资产 %d 个, 排除资产 %d 个"),
 		WhitelistAssets.Num(), ExcludedAssets.Num());
+
+	// 引擎资源始终保留在首包，不能被剥离
+	// 引擎默认材质等 /Engine/ 路径在运行时引擎初始化阶段就需要加载，
+	// 此时热更系统尚未就绪，无法从外部下载这些资源
+	int32 EngineAssetCount = 0;
+	for (int32 i = ExcludedAssets.Num() - 1; i >= 0; --i)
+	{
+		if (ExcludedAssets[i].StartsWith(TEXT("/Engine/")))
+		{
+			WhitelistAssets.Add(ExcludedAssets[i]);
+			ExcludedAssets.RemoveAt(i);
+			EngineAssetCount++;
+		}
+	}
+
+	if (EngineAssetCount > 0)
+	{
+		UE_LOG(LogHotUpdateEditor, Log,
+			TEXT("从排除列表中回收 %d 个引擎资源到首包"), EngineAssetCount);
+	}
 
 	if (WhitelistAssets.Num() == 0)
 	{

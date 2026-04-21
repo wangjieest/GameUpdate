@@ -404,38 +404,3 @@ bool FHotUpdateAssetFilter::WildcardMatch(const FString& Pattern, const FString&
 
 	return true;
 }
-
-void FHotUpdateAssetFilter::FilterAssetsForMinimalPackage(
-	const TArray<FString>& InAssetPaths,
-	const FHotUpdateMinimalPackageConfig& Config,
-	IAssetRegistry* AssetRegistry,
-	TArray<FString>& OutWhitelistAssets,
-	TArray<FString>& OutEngineAssets,
-	TArray<FString>& OutExcludedAssets)
-{
-	// 先调用标准过滤（已支持 /Engine/ 依赖收集）
-	TArray<FString> WhitelistAssets;
-	TArray<FString> ExcludedAssets;
-
-	FilterAssets(InAssetPaths, Config, AssetRegistry, WhitelistAssets, ExcludedAssets);
-
-	// 从白名单中分离 /Engine/ 路径资产
-	for (const FString& Asset : WhitelistAssets)
-	{
-		if (Asset.StartsWith(TEXT("/Engine/")))
-		{
-			OutEngineAssets.Add(Asset);
-		}
-		else
-		{
-			OutWhitelistAssets.Add(Asset);
-		}
-	}
-
-	// 排除资产直接输出
-	OutExcludedAssets = ExcludedAssets;
-
-	UE_LOG(LogHotUpdateAssetFilter, Log,
-		TEXT("小包模式三分类完成: 白名单 %d, 引擎依赖 %d, 排除 %d"),
-		OutWhitelistAssets.Num(), OutEngineAssets.Num(), OutExcludedAssets.Num());
-}

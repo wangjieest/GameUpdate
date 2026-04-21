@@ -122,6 +122,10 @@ struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FHotUpdateMinimalPackageConfig MinimalPackageConfig;
 
+	/// 预收集的热更资产列表（ApplyMinimalPackageFilter 输出，由游戏线程填充）
+	/// 非 UPROPERTY，仅用于构建流程内部传递
+	TArray<FString> PreCollectedPatchAssetPaths;
+
 	FHotUpdateBaseVersionBuildConfig()
 		: Platform(EHotUpdatePlatform::Windows)
 		, BuildConfiguration(EHotUpdateBuildConfiguration::Development)

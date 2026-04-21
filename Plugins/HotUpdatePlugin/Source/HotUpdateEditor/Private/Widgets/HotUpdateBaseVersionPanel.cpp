@@ -59,9 +59,6 @@ void SHotUpdateBaseVersionPanel::Construct(const FArguments& InArgs)
 	// 分包策略选项初始化
 	PatchChunkStrategyOptions.Add(MakeShareable(new EHotUpdateChunkStrategy(EHotUpdateChunkStrategy::None)));
 	PatchChunkStrategyOptions.Add(MakeShareable(new EHotUpdateChunkStrategy(EHotUpdateChunkStrategy::Size)));
-	PatchChunkStrategyOptions.Add(MakeShareable(new EHotUpdateChunkStrategy(EHotUpdateChunkStrategy::Directory)));
-	PatchChunkStrategyOptions.Add(MakeShareable(new EHotUpdateChunkStrategy(EHotUpdateChunkStrategy::PrimaryAsset)));
-	PatchChunkStrategyOptions.Add(MakeShareable(new EHotUpdateChunkStrategy(EHotUpdateChunkStrategy::Hybrid)));
 	SelectedPatchChunkStrategy = PatchChunkStrategyOptions[0];
 
 	// 创建构建器
@@ -873,15 +870,6 @@ TSharedRef<SWidget> SHotUpdateBaseVersionPanel::GeneratePatchChunkStrategyComboB
 	case EHotUpdateChunkStrategy::Size:
 		StrategyText = LOCTEXT("ChunkStrategySize", "按大小分包");
 		break;
-	case EHotUpdateChunkStrategy::Directory:
-		StrategyText = LOCTEXT("ChunkStrategyDirectory", "按目录分包");
-		break;
-	case EHotUpdateChunkStrategy::PrimaryAsset:
-		StrategyText = LOCTEXT("ChunkStrategyPrimaryAsset", "UE5标准分包");
-		break;
-	case EHotUpdateChunkStrategy::Hybrid:
-		StrategyText = LOCTEXT("ChunkStrategyHybrid", "混合模式");
-		break;
 	}
 	return SNew(STextBlock)
 		.Text(StrategyText)
@@ -908,12 +896,6 @@ FText SHotUpdateBaseVersionPanel::GetSelectedPatchChunkStrategyText() const
 			return LOCTEXT("ChunkStrategyNone", "不分包（全部一个Chunk）");
 		case EHotUpdateChunkStrategy::Size:
 			return LOCTEXT("ChunkStrategySize", "按大小分包");
-		case EHotUpdateChunkStrategy::Directory:
-			return LOCTEXT("ChunkStrategyDirectory", "按目录分包");
-		case EHotUpdateChunkStrategy::PrimaryAsset:
-			return LOCTEXT("ChunkStrategyPrimaryAsset", "UE5标准分包");
-		case EHotUpdateChunkStrategy::Hybrid:
-			return LOCTEXT("ChunkStrategyHybrid", "混合模式");
 		}
 	}
 	return LOCTEXT("ChunkStrategyNone", "不分包（全部一个Chunk）");

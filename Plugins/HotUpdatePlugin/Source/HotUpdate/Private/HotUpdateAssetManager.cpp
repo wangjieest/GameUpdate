@@ -153,6 +153,16 @@ bool UHotUpdateAssetManager::GetPackageChunkIds(
 	{
 		FString PackageStr = PackageName.ToString();
 
+		// 引擎资源始终分配到 Chunk 0（首包）
+		// 引擎默认材质等 /Engine/ 路径在运行时引擎初始化阶段就需要加载，
+		// 此时热更系统尚未就绪，无法从外部下载这些资源
+		if (PackageStr.StartsWith(TEXT("/Engine/")))
+		{
+			OutChunkList.Empty();
+			OutChunkList.Add(0);
+			return true;
+		}
+
 		bool bShouldBeInChunk0 = false;
 
 		// Check if package is in the expanded Chunk 0 set (whitelist + dependencies)

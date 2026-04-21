@@ -28,24 +28,7 @@ public:
 		IAssetRegistry* AssetRegistry,
 		TArray<FString>& OutWhitelistAssets,
 		TArray<FString>& OutExcludedAssets);
-
-	/**
-	 * 小包模式三分类过滤
-	 * 将资产分为白名单（/Game/）、引擎依赖（/Engine/）和排除资产三组
-	 * @param InAssetPaths 输入资产路径列表
-	 * @param Config 最小包配置
-	 * @param AssetRegistry 资产注册表
-	 * @param OutWhitelistAssets 白名单资产（/Game/ 路径）
-	 * @param OutEngineAssets 引擎依赖资产（/Engine/ 路径）
-	 * @param OutExcludedAssets 被排除的业务资产
-	 */
-	static void FilterAssetsForMinimalPackage(
-		const TArray<FString>& InAssetPaths,
-		const FHotUpdateMinimalPackageConfig& Config,
-		IAssetRegistry* AssetRegistry,
-		TArray<FString>& OutWhitelistAssets,
-		TArray<FString>& OutEngineAssets,
-		TArray<FString>& OutExcludedAssets);
+	
 
 	/**
 	 * 检查资产是否匹配过滤规则

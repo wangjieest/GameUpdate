@@ -56,10 +56,7 @@ void SHotUpdatePackagingPanel::Construct(const FArguments& InArgs)
 	// 初始化分包策略选项
 	ChunkStrategyOptions.Add(MakeShareable(new EHotUpdateChunkStrategy(EHotUpdateChunkStrategy::None)));
 	ChunkStrategyOptions.Add(MakeShareable(new EHotUpdateChunkStrategy(EHotUpdateChunkStrategy::Size)));
-	ChunkStrategyOptions.Add(MakeShareable(new EHotUpdateChunkStrategy(EHotUpdateChunkStrategy::Directory)));
-	ChunkStrategyOptions.Add(MakeShareable(new EHotUpdateChunkStrategy(EHotUpdateChunkStrategy::PrimaryAsset)));
-	ChunkStrategyOptions.Add(MakeShareable(new EHotUpdateChunkStrategy(EHotUpdateChunkStrategy::Hybrid)));
-	SelectedChunkStrategy = ChunkStrategyOptions[3]; // 默认 PrimaryAsset
+	SelectedChunkStrategy = ChunkStrategyOptions[1]; // 默认 Size
 
 	// 初始化版本选择选项
 	RefreshVersionSelectOptions();
@@ -946,15 +943,6 @@ TSharedRef<SWidget> SHotUpdatePackagingPanel::GenerateChunkStrategyComboBoxItem(
 	case EHotUpdateChunkStrategy::Size:
 		StrategyText = LOCTEXT("StrategySize", "按大小分包");
 		break;
-	case EHotUpdateChunkStrategy::Directory:
-		StrategyText = LOCTEXT("StrategyDirectory", "按目录分包");
-		break;
-	case EHotUpdateChunkStrategy::PrimaryAsset:
-		StrategyText = LOCTEXT("StrategyPrimaryAsset", "UE5标准分包");
-		break;
-	case EHotUpdateChunkStrategy::Hybrid:
-		StrategyText = LOCTEXT("StrategyHybrid", "混合模式");
-		break;
 	}
 	return SNew(STextBlock)
 		.Text(StrategyText)
@@ -981,15 +969,10 @@ FText SHotUpdatePackagingPanel::GetSelectedChunkStrategyText() const
 			return LOCTEXT("StrategyNone", "不分包");
 		case EHotUpdateChunkStrategy::Size:
 			return LOCTEXT("StrategySize", "按大小分包");
-		case EHotUpdateChunkStrategy::Directory:
-			return LOCTEXT("StrategyDirectory", "按目录分包");
-		case EHotUpdateChunkStrategy::PrimaryAsset:
-			return LOCTEXT("StrategyPrimaryAsset", "UE5标准分包");
-		case EHotUpdateChunkStrategy::Hybrid:
-			return LOCTEXT("StrategyHybrid", "混合模式");
+	
 		}
 	}
-	return LOCTEXT("StrategyPrimaryAsset", "UE5标准分包");
+	return LOCTEXT("StrategySize", "按大小分包");
 }
 
 TSharedRef<SWidget> SHotUpdatePackagingPanel::GenerateAndroidTextureFormatComboBoxItem(TSharedPtr<EHotUpdateAndroidTextureFormat> InItem)

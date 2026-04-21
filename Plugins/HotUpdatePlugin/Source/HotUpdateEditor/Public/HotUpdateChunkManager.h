@@ -94,58 +94,12 @@ public:
 
 private:
 	/**
-	 * 按 Primary Asset 划分（UE5 标准）
-	 */
-	bool DivideByPrimaryAsset(
-		const TArray<FString>& AssetPaths,
-		IAssetRegistry* AssetRegistry,
-		TArray<FHotUpdateChunkDefinition>& OutChunks,
-		TMap<FString, int32>& OutAssetToChunk);
-
-	/**
-	 * 按大小划分
-	 */
-	bool DivideBySize(
-		const TArray<FString>& AssetPaths,
-		const TMap<FString, FString>& AssetDiskPaths,
-		int32 MaxChunkSizeMB,
-		TArray<FHotUpdateChunkDefinition>& OutChunks,
-		TMap<FString, int32>& OutAssetToChunk);
-
-	/**
 	 * 按大小划分（扩展版，支持详细配置）
 	 */
 	bool DivideBySizeWithConfig(
 		const TArray<FString>& AssetPaths,
 		const TMap<FString, FString>& AssetDiskPaths,
 		const FHotUpdateSizeBasedChunkConfig& Config,
-		TArray<FHotUpdateChunkDefinition>& OutChunks,
-		TMap<FString, int32>& OutAssetToChunk);
-
-	/**
-	 * 按目录规则划分
-	 */
-	bool DivideByDirectory(
-		const TArray<FString>& AssetPaths,
-		const TMap<FString, FString>& AssetDiskPaths,
-		const TArray<FHotUpdateDirectoryChunkRule>& DirectoryRules,
-		IAssetRegistry* AssetRegistry,
-		TArray<FHotUpdateChunkDefinition>& OutChunks,
-		TMap<FString, int32>& OutAssetToChunk,
-		TArray<FString>& OutUnmatchedAssets);
-
-	/**
-	 * 检查资源路径是否匹配目录规则
-	 */
-	static bool MatchesDirectoryRule(const FString& AssetPath, const FHotUpdateDirectoryChunkRule& Rule);
-
-	/**
-	 * 为目录资源按大小细分
-	 */
-	bool DivideDirectoryAssetsBySize(
-		const TArray<FString>& Assets,
-		const TMap<FString, FString>& AssetDiskPaths,
-		const FHotUpdateDirectoryChunkRule& Rule,
 		TArray<FHotUpdateChunkDefinition>& OutChunks,
 		TMap<FString, int32>& OutAssetToChunk);
 

@@ -8,14 +8,14 @@
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
 
-int32 UHotUpdateChunkManager::NextAutoChunkId = 0;
-FCriticalSection UHotUpdateChunkManager::ChunkIdLock;
+int32 FHotUpdateChunkManager::NextAutoChunkId = 0;
+FCriticalSection FHotUpdateChunkManager::ChunkIdLock;
 
-UHotUpdateChunkManager::UHotUpdateChunkManager()
+FHotUpdateChunkManager::FHotUpdateChunkManager()
 {
 }
 
-FHotUpdateChunkAnalysisResult UHotUpdateChunkManager::AnalyzeAndCreateChunks(
+FHotUpdateChunkAnalysisResult FHotUpdateChunkManager::AnalyzeAndCreateChunks(
 	const TArray<FString>& AssetPaths,
 	const TMap<FString, FString>& AssetDiskPaths,
 	const FHotUpdateChunkAnalysisConfig& Config)
@@ -98,7 +98,7 @@ FHotUpdateChunkAnalysisResult UHotUpdateChunkManager::AnalyzeAndCreateChunks(
 	return Result;
 }
 
-FHotUpdateChunkAnalysisResult UHotUpdateChunkManager::CreatePatchChunks(
+FHotUpdateChunkAnalysisResult FHotUpdateChunkManager::CreatePatchChunks(
 	const TArray<FString>& ChangedAssets,
 	const TMap<FString, FString>& AssetDiskPaths,
 	const FHotUpdateChunkAnalysisConfig& Config)
@@ -154,10 +154,7 @@ FHotUpdateChunkAnalysisResult UHotUpdateChunkManager::CreatePatchChunks(
 	return Result;
 }
 
-bool UHotUpdateChunkManager::BuildDependencies(
-	TArray<FHotUpdateChunkDefinition>& Chunks,
-	const TMap<FString, int32>& AssetToChunk,
-	IAssetRegistry* AssetRegistry)
+bool FHotUpdateChunkManager::BuildDependencies(TArray<FHotUpdateChunkDefinition>& Chunks, const TMap<FString, int32>& AssetToChunk, IAssetRegistry* AssetRegistry)
 {
 	if (!AssetRegistry)
 	{
@@ -192,25 +189,12 @@ bool UHotUpdateChunkManager::BuildDependencies(
 				}
 			}
 		}
-
-		// 设置父 Chunk
-		Chunks[i].ParentChunks = DependentChunks.Array();
-
-		// 更新子 Chunk 映射
-		for (int32 ParentChunkId : Chunks[i].ParentChunks)
-		{
-			const int32* ParentIndex = ChunkIdToIndex.Find(ParentChunkId);
-			if (ParentIndex)
-			{
-				Chunks[*ParentIndex].ChildChunks.AddUnique(Chunks[i].ChunkId);
-			}
-		}
 	}
 
 	return true;
 }
 
-int64 UHotUpdateChunkManager::GetAssetSize(const FString& AssetPath, const TMap<FString, FString>& AssetDiskPaths)
+int64 FHotUpdateChunkManager::GetAssetSize(const FString& AssetPath, const TMap<FString, FString>& AssetDiskPaths)
 {
 	const FString* DiskPath = AssetDiskPaths.Find(AssetPath);
 	if (DiskPath && FPaths::FileExists(*DiskPath))
@@ -220,13 +204,13 @@ int64 UHotUpdateChunkManager::GetAssetSize(const FString& AssetPath, const TMap<
 	return 0;
 }
 
-int32 UHotUpdateChunkManager::AllocateNextChunkId()
+int32 FHotUpdateChunkManager::AllocateNextChunkId()
 {
 	FScopeLock Lock(&ChunkIdLock);
 	return NextAutoChunkId++;
 }
 
-bool UHotUpdateChunkManager::DivideBySizeWithConfig(
+bool FHotUpdateChunkManager::DivideBySizeWithConfig(
 	const TArray<FString>& AssetPaths,
 	const TMap<FString, FString>& AssetDiskPaths,
 	const FHotUpdateSizeBasedChunkConfig& Config,
@@ -297,7 +281,7 @@ bool UHotUpdateChunkManager::DivideBySizeWithConfig(
 	return OutChunks.Num() > 0;
 }
 
-bool UHotUpdateChunkManager::CreateSingleChunk(
+bool FHotUpdateChunkManager::CreateSingleChunk(
 	const TArray<FString>& AssetPaths,
 	const TMap<FString, FString>& AssetDiskPaths,
 	const FString& ChunkName,

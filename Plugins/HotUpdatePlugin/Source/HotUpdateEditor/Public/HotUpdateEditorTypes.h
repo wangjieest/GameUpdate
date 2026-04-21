@@ -377,15 +377,7 @@ struct HOTUPDATEEDITOR_API FHotUpdateChunkDefinition
 	/// 包含的资源路径
 	UPROPERTY(BlueprintReadOnly, Category = "Chunk")
 	TArray<FString> AssetPaths;
-
-	/// 父 Chunk ID 列表
-	UPROPERTY(BlueprintReadOnly, Category = "Chunk")
-	TArray<int32> ParentChunks;
-
-	/// 子 Chunk ID 列表
-	UPROPERTY(BlueprintReadOnly, Category = "Chunk")
-	TArray<int32> ChildChunks;
-
+	
 	/// 未压缩大小
 	UPROPERTY(BlueprintReadOnly, Category = "Chunk")
 	int64 UncompressedSize;
@@ -428,10 +420,6 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
 	FFilePath BaseManifestPath;
 
-
-	/// 资源路径列表
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
-	TArray<FString> AssetPaths;
 
 	/// 是否包含依赖资源
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
@@ -488,8 +476,10 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageConfig
 	FDirectoryPath BaseContainerDirectory;
 
 	/// 预收集的完整资源列表（含依赖，由游戏线程填充，后台线程直接使用）
-	/// 非 UPROPERTY，仅用于构建流程内部传递，不需要序列化
 	TArray<FString> PreCollectedAssetPaths;
+
+	/// 预收集的非 UE 资源列表（Staged 文件）
+	TArray<FString> PreCollectedNonAssetPaths;
 
 	FHotUpdatePatchPackageConfig()
 		: Platform(EHotUpdatePlatform::Windows)

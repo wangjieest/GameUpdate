@@ -33,24 +33,35 @@ FHotUpdatePackagingSettingsResult FHotUpdatePackagingSettingsHelper::ParsePackag
 	{
 		FPlatformProcess::Sleep(0.1f);
 	}
-
-	// 读取基本配置
-	Result.bSkipEditorContent = Settings->bSkipEditorContent;
-
+	
 	// 1. 收集 MapsToCook 中的地图
 	TArray<FString> MapPaths = CollectMapsToCook(Settings);
-	Result.MapPaths = MapPaths;
-	Result.AssetPaths.Append(MapPaths);
-
+	if (MapPaths.Num() > 0)
+	{
+		Result.AssetPaths.Append(MapPaths);
+	}
+	
 	// 2. 收集 DirectoriesToAlwaysCook 中的资源（bCookMapsOnly 时跳过）
 	TArray<FString> AlwaysCookAssets = CollectAlwaysCookAssets(Settings);
 	Result.AssetPaths.Append(AlwaysCookAssets);
 
 	// 3. 过滤 NeverCook 目录
-	FilterNeverCookAssets(Result.AssetPaths, Settings);
+	int32 RemovedCount = 0;
+	Result.AssetPaths.RemoveAll([&Settings, &RemovedCount](const FString& Path){
+		if (ShouldExcludeAsset(Path, Settings))
+		{
+			RemovedCount++;
+			return true;
+		}
+		return false;
+	});
+
+	if (RemovedCount > 0){
+		UE_LOG(LogHotUpdateEditor, Verbose, TEXT("过滤掉 %d 个 NeverCook 目录中的资源"), RemovedCount);
+	}
 
 	// 4. 过滤编辑器内容
-	if (Result.bSkipEditorContent){
+	if (Settings->bSkipEditorContent){
 		FilterEditorContent(Result.AssetPaths);
 	}
 
@@ -77,7 +88,7 @@ FHotUpdatePackagingSettingsResult FHotUpdatePackagingSettingsHelper::ParsePackag
 		Result.AssetPaths = AllPaths.Array();
 	}
 
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("解析项目打包配置完成: %d 个资源, %d 个地图"), Result.AssetPaths.Num(), Result.MapPaths.Num());
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("解析项目打包配置完成: %d 个资源"), Result.AssetPaths.Num());
 
 	return Result;
 }
@@ -178,30 +189,6 @@ bool FHotUpdatePackagingSettingsHelper::ShouldExcludeAsset(const FString& AssetP
 	}
 
 	return false;
-}
-
-void FHotUpdatePackagingSettingsHelper::FilterNeverCookAssets(TArray<FString>& AssetPaths, UProjectPackagingSettings* Settings)
-{
-	if (!Settings)
-	{
-		return;
-	}
-
-	int32 RemovedCount = 0;
-	AssetPaths.RemoveAll([&Settings, &RemovedCount](const FString& Path)
-	{
-		if (ShouldExcludeAsset(Path, Settings))
-		{
-			RemovedCount++;
-			return true;
-		}
-		return false;
-	});
-
-	if (RemovedCount > 0)
-	{
-		UE_LOG(LogHotUpdateEditor, Verbose, TEXT("过滤掉 %d 个 NeverCook 目录中的资源"), RemovedCount);
-	}
 }
 
 void FHotUpdatePackagingSettingsHelper::FilterEditorContent(TArray<FString>& AssetPaths)

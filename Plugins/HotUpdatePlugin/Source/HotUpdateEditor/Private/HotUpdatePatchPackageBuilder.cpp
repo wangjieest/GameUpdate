@@ -41,10 +41,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 		Result.ErrorMessage = ErrorMessage;
 		return Result;
 	}
-
-	// 注意：不在此同步版本中检查 bIsBuilding，因为异步版本会在调用前设置此标志
-	// 直接调用此同步方法的用户需要自行管理并发控制
-
+	
 	bIsCancelled = false;
 
 	// 编译项目：确保 Cook 使用最新的游戏代码
@@ -110,32 +107,21 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 
 	// 从 manifest 中读取实际版本号作为 BaseVersion
 	FString ActualBaseVersion = CurrentConfig.BaseVersion;
+	FString ManifestContent;
+	if (FFileHelper::LoadFileToString(ManifestContent, *CurrentConfig.BaseManifestPath.FilePath))
 	{
-		FString ManifestContent;
-		if (FFileHelper::LoadFileToString(ManifestContent, *CurrentConfig.BaseManifestPath.FilePath))
+		TSharedPtr<FJsonObject> ManifestObj;
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ManifestContent);
+		if (FJsonSerializer::Deserialize(Reader, ManifestObj) && ManifestObj.IsValid())
 		{
-			TSharedPtr<FJsonObject> ManifestObj;
-			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ManifestContent);
-			if (FJsonSerializer::Deserialize(Reader, ManifestObj) && ManifestObj.IsValid())
+			const TSharedPtr<FJsonObject>* VersionObj;
+			if (ManifestObj->TryGetObjectField(TEXT("version"), VersionObj))
 			{
-				const TSharedPtr<FJsonObject>* VersionObj;
-				if (ManifestObj->TryGetObjectField(TEXT("version"), VersionObj))
+				FString ManifestVersion;
+				if (VersionObj->Get()->TryGetStringField(TEXT("version"), ManifestVersion))
 				{
-					FString ManifestVersion;
-					if (VersionObj->Get()->TryGetStringField(TEXT("version"), ManifestVersion))
-					{
-						ActualBaseVersion = ManifestVersion;
-						UE_LOG(LogHotUpdateEditor, Log, TEXT("从 Manifest 更新 BaseVersion 为: %s"), *ActualBaseVersion);
-					}
-				}
-				else if (ManifestObj->TryGetObjectField(TEXT("versionInfo"), VersionObj))
-				{
-					FString ManifestVersion;
-					if (VersionObj->Get()->TryGetStringField(TEXT("versionString"), ManifestVersion))
-					{
-						ActualBaseVersion = ManifestVersion;
-						UE_LOG(LogHotUpdateEditor, Log, TEXT("从 Manifest (旧格式) 更新 BaseVersion 为: %s"), *ActualBaseVersion);
-					}
+					ActualBaseVersion = ManifestVersion;
+					UE_LOG(LogHotUpdateEditor, Log, TEXT("从 Manifest 更新 BaseVersion 为: %s"), *ActualBaseVersion);
 				}
 			}
 		}
@@ -760,7 +746,6 @@ void UHotUpdatePatchPackageBuilder::BuildPatchPackageAsync(const FHotUpdatePatch
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("  BuildTask.IsReady(): %s"), BuildTask.IsReady() ? TEXT("true") : TEXT("false"));
 
 	// 检查是否有正在运行的构建任务
-	// 如果 bIsBuilding 为 true 但 BuildTask 已经完成，说明之前的构建异常终止，需要重置状态
 	if (bIsBuilding)
 	{
 		if (BuildTask.IsValid() && !BuildTask.IsReady())
@@ -786,10 +771,8 @@ void UHotUpdatePatchPackageBuilder::BuildPatchPackageAsync(const FHotUpdatePatch
 
 	bIsBuilding = true;
 	bIsCancelled = false;
-
-	// 在后台线程启动前，先在游戏线程完成需要访问 AssetRegistry 的操作
-	// 因为 AssetRegistry->GetAssets() 必须在游戏线程执行
-	FHotUpdatePatchPackageConfig ConfigForThread = Config;
+	
+	CurrentConfig = Config;
 
 	// 始终从打包配置读取资源路径
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("在游戏线程预收集打包设置中的资源..."));
@@ -807,16 +790,14 @@ void UHotUpdatePatchPackageBuilder::BuildPatchPackageAsync(const FHotUpdatePatch
 		return;
 		}
 
-	ConfigForThread.AssetPaths = SettingsResult.AssetPaths;
+	CurrentConfig.PreCollectedAssetPaths = SettingsResult.AssetPaths;
+		CurrentConfig.PreCollectedNonAssetPaths = SettingsResult.NonAssetPaths;
 
-	// 标记预收集完成，后台线程无需再访问 AssetRegistry
-	ConfigForThread.PreCollectedAssetPaths = ConfigForThread.AssetPaths;
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("预收集完成（含依赖），共 %d 个资源路径"), ConfigForThread.AssetPaths.Num());
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("预收集完成（含依赖），共 %d 个资源, %d 个非资源文件"), CurrentConfig.PreCollectedAssetPaths.Num(), CurrentConfig.PreCollectedNonAssetPaths.Num());
 
 	TWeakObjectPtr<UHotUpdatePatchPackageBuilder> WeakThis(this);
 
-	BuildTask = Async(EAsyncExecution::Thread, [WeakThis, ConfigForThread]()
+	BuildTask = Async(EAsyncExecution::Thread, [WeakThis]()
 	{
 		UHotUpdatePatchPackageBuilder* Builder = WeakThis.Get();
 		if (!Builder)
@@ -824,7 +805,7 @@ void UHotUpdatePatchPackageBuilder::BuildPatchPackageAsync(const FHotUpdatePatch
 			return;
 		}
 
-		FHotUpdatePatchPackageResult Result = Builder->BuildPatchPackage(ConfigForThread);
+		FHotUpdatePatchPackageResult Result = Builder->BuildPatchPackage(Builder->CurrentConfig);
 
 		AsyncTask(ENamedThreads::GameThread, [WeakThis, Result]()
 		{
@@ -927,18 +908,16 @@ bool UHotUpdatePatchPackageBuilder::ValidateConfig(const FHotUpdatePatchPackageC
 	return true;
 }
 
-bool UHotUpdatePatchPackageBuilder::CollectAssets(
-	TArray<FString>& OutAssetPaths,
-	TMap<FString, FString>& OutAssetDiskPaths,
-	TMap<FString, FString>& OutAssetSourcePaths,
-	FString& OutErrorMessage)
+bool UHotUpdatePatchPackageBuilder::CollectAssets(TArray<FString>& OutAssetPaths, TMap<FString, FString>& OutAssetDiskPaths, TMap<FString, FString>& OutAssetSourcePaths, FString& OutErrorMessage)
 {
 	TArray<FString> AllAssetPaths;
+	TArray<FString> AllNonAssetPaths;
 
 	// 优先使用预收集的资源列表（游戏线程已收集，含依赖），避免后台线程访问 AssetRegistry
 	if (CurrentConfig.PreCollectedAssetPaths.Num() > 0)
 	{
 		AllAssetPaths = CurrentConfig.PreCollectedAssetPaths;
+		AllNonAssetPaths = CurrentConfig.PreCollectedNonAssetPaths;
 	}
 	else
 	{
@@ -950,12 +929,10 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(
 			return false;
 		}
 		AllAssetPaths = SettingsResult.AssetPaths;
-
+		AllNonAssetPaths = SettingsResult.NonAssetPaths;
 	}
 
-	// 收集 DirectoriesToAlwaysStageAsUFS/NonUFS 中的 Staged 文件
-	TArray<FString> StagedPaths = FHotUpdatePackagingSettingsHelper::CollectStagedFilePaths();
-	AllAssetPaths.Append(StagedPaths);
+	AllAssetPaths.Append(AllNonAssetPaths);
 	
 	// 获取磁盘路径
 	// 使用 Cooked 目录解析磁盘路径

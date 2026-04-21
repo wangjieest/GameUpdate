@@ -5,44 +5,30 @@
 #include "CoreMinimal.h"
 #include "HotUpdateEditorTypes.h"
 #include "HAL/CriticalSection.h"
-#include <atomic>
-#include "HotUpdateChunkManager.generated.h"
 
 class IAssetRegistry;
 
 /**
  * Chunk 分析结果
  */
-USTRUCT(BlueprintType)
+
 struct HOTUPDATEEDITOR_API FHotUpdateChunkAnalysisResult
 {
-	GENERATED_BODY()
-
 	/// 所有 Chunk 定义
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	TArray<FHotUpdateChunkDefinition> Chunks;
 
 	/// 资源到 Chunk 的映射
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	TMap<FString, int32> AssetToChunkMap;
 
-
 	/// 统计信息
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	int32 TotalAssetCount;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	int32 TotalChunkCount;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	int64 TotalSize;
 
 	/// 是否成功
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	bool bSuccess;
 
 	/// 错误信息
-	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	FString ErrorMessage;
 
 	FHotUpdateChunkAnalysisResult()
@@ -58,13 +44,10 @@ struct HOTUPDATEEDITOR_API FHotUpdateChunkAnalysisResult
  * Chunk 管理器
  * 使用 UE5 标准方法进行 Chunk 划分
  */
-UCLASS(BlueprintType)
-class HOTUPDATEEDITOR_API UHotUpdateChunkManager : public UObject
+class HOTUPDATEEDITOR_API FHotUpdateChunkManager
 {
-	GENERATED_BODY()
-
 public:
-	UHotUpdateChunkManager();
+	FHotUpdateChunkManager();
 
 	/**
 	 * 分析资源并创建 Chunk 划分
@@ -73,7 +56,6 @@ public:
 	 * @param Config 分析配置
 	 * @return 分析结果
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|Chunk")
 	FHotUpdateChunkAnalysisResult AnalyzeAndCreateChunks(
 		const TArray<FString>& AssetPaths,
 		const TMap<FString, FString>& AssetDiskPaths,

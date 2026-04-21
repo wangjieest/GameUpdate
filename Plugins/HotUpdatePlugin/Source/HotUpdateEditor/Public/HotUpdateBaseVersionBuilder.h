@@ -123,7 +123,6 @@ struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildConfig
 	FHotUpdateMinimalPackageConfig MinimalPackageConfig;
 
 	/// 预收集的热更资产列表（ApplyMinimalPackageFilter 输出，由游戏线程填充）
-	/// 非 UPROPERTY，仅用于构建流程内部传递
 	TArray<FString> PreCollectedPatchAssetPaths;
 
 	FHotUpdateBaseVersionBuildConfig()
@@ -237,17 +236,20 @@ private:
 	TArray<FString> CollectAllAssetPaths() const;
 
 	/**
-	 * 应用最小包过滤，拆分白名单资源和热更资源
-	 */
-	void ApplyMinimalPackageFilter(
-		TArray<FString>& InOutAssetPaths,
-		TArray<FString>& OutPatchAssets,
-		IAssetRegistry* AssetRegistry) const;
-
-	/**
 	 * 预计算非白名单资源的 Chunk 分配，用 ChunkManager 按策略分包
 	 */
 	void PreComputeChunkMapping();
+
+	/**
+	 * 递归收集资源包及其引用者（用于确定首包 Chunk0 资源集合）
+	 * @param InAssetRegistry AssetRegistry 实例
+	 * @param PackageName 起始包名
+	 * @param OutPackages 输出包名集合（包含所有递归收集的包）
+	 */
+	static void CollectPackagesWithReferencers(
+		IAssetRegistry& InAssetRegistry,
+		const FString& PackageName,
+		TArray<FString>& OutPackages);
 
 	/**
 	 * 解析资源磁盘路径并构建解析信息（消除 ConvertAssetPathToFileName 的冗余 GetAssetDiskPath 调用）
@@ -295,6 +297,6 @@ private:
 	/// 缓存的 Chunk 定义列表，由 PreComputeChunkMapping 填充
 	TArray<FHotUpdateChunkDefinition> CachedChunkDefinitions;
 
-	/// 缓存的 Chunk0 资源集合（白名单+依赖），由 PreComputeChunkMapping 填充
-	TSet<FString> CachedChunk0Packages;
+	/// 缓存的白名单资源列表（首包 Chunk0 资源），由 BuildBaseVersion 填充
+	TArray<FString> CachedWhitelistAssetPaths;
 };

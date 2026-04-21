@@ -12,30 +12,17 @@ class UProjectPackagingSettings;
  */
 struct HOTUPDATEEDITOR_API FHotUpdatePackagingSettingsResult
 {
-	/// 要打包的资源路径列表
+	/// UE 资源路径列表（含依赖）
 	TArray<FString> AssetPaths;
 
-	/// 要打包的地图路径列表
-	TArray<FString> MapPaths;
+	/// 非 UE 资源路径列表（Staged 文件）
+	/// pak 内路径格式，如 GameUpdate/Content/Setting/ui.txt
+	TArray<FString> NonAssetPaths;
 
-	/// 总是Cook的目录
-	TArray<FString> AlwaysCookDirectories;
-
-	/// 永不Cook的目录
-	TArray<FString> NeverCookDirectories;
-
-	/// 是否跳过编辑器内容
-	bool bSkipEditorContent;
-
-	/// 解析过程中遇到的错误
+	/// 错误信息
 	TArray<FString> Errors;
 
-	/// 解析过程中遇到的警告
-	TArray<FString> Warnings;
-
-	FHotUpdatePackagingSettingsResult()
-		: bSkipEditorContent(true)
-	{}
+	FHotUpdatePackagingSettingsResult() {}
 };
 
 /**
@@ -79,14 +66,7 @@ public:
 	 * @return 是否应该排除
 	 */
 	static bool ShouldExcludeAsset(const FString& AssetPath, UProjectPackagingSettings* Settings);
-
-	/**
-	 * 过滤资源列表，排除NeverCook目录中的资源
-	 * @param AssetPaths 资源路径列表
-	 * @param Settings 项目打包设置
-	 */
-	static void FilterNeverCookAssets(TArray<FString>& AssetPaths, UProjectPackagingSettings* Settings);
-
+	
 	/**
 	 * 过滤编辑器内容
 	 * @param AssetPaths 资源路径列表

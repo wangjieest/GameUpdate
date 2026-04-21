@@ -186,36 +186,41 @@ void UHotUpdateBaseVersionBuilder::BuildBaseVersion(const FHotUpdateBaseVersionB
 			for (const FString& PackageFile : PackageFiles)
 			{
 				FString PackageName = FPackageName::FilenameToLongPackageName(PackageFile);
-				TArray<FString> CollectedPackages;
-				CollectPackagesWithReferencers(*AssetRegistry, PackageName, CollectedPackages);
-				for (const FString& Collected : CollectedPackages)
-				{
-					WhitelistSet.Add(Collected);
-				}
+				// 收集白名单资源及其依赖（依赖应进入首包）
+				TSet<FString> CollectedPackages;
+				FHotUpdatePackagingSettingsHelper::CollectPackageAndAllDependencies(*AssetRegistry, PackageName, CollectedPackages);
+				WhitelistSet.Append(CollectedPackages);
 			}
 		}
 
-		UE_LOG(LogHotUpdateEditor, Log, TEXT("白名单资源及其引用者收集完成: %d 个资产"), WhitelistSet.Num());
+		UE_LOG(LogHotUpdateEditor, Log, TEXT("白名单资源及其依赖收集完成: %d 个资产"), WhitelistSet.Num());
 
-		// 2. 收集所有资源
-		TArray<FString> AllAssetPaths = CollectAllAssetPaths();
+		// 2. 收集所有资源（包含依赖）
+		FHotUpdatePackagingSettingsResult PackagingResult = FHotUpdatePackagingSettingsHelper::ParsePackagingSettings(true);
+		TArray<FString> AllAssetPaths = PackagingResult.AssetPaths;
 
 		// 3. 拆分首包资源（白名单+引擎）和热更资源
 		TArray<FString> PatchAssetPaths;
 		TArray<FString> WhitelistAssetPaths;
+
+		// 白名单资源直接添加到首包
+		for (const FString& WhitelistAsset : WhitelistSet)
+		{
+			WhitelistAssetPaths.AddUnique(WhitelistAsset);
+		}
+
 		for (const FString& AssetPath : AllAssetPaths)
 		{
-			// 白名单资源 -> 首包
+			// 白名单资源已添加，跳过
 			if (WhitelistSet.Contains(AssetPath))
 			{
-				WhitelistAssetPaths.Add(AssetPath);
 				continue;
 			}
 
 			// 引擎资源 -> 首包
 			if (UHotUpdateFileUtils::IsEngineAsset(AssetPath))
 			{
-				WhitelistAssetPaths.Add(AssetPath);
+				WhitelistAssetPaths.AddUnique(AssetPath);
 				continue;
 			}
 
@@ -584,15 +589,26 @@ void UHotUpdateBaseVersionBuilder::WriteMinimalPackageConfig()
 	TSharedPtr<FJsonObject> JsonObj = MakeShareable(new FJsonObject);
 	JsonObj->SetBoolField(TEXT("bEnableMinimalPackage"), CurrentConfig.MinimalPackageConfig.bEnableMinimalPackage);
 
-	// 写入预计算的 ChunkMapping（如果已预计算）
-	if (CachedChunkMapping.Num() > 0)
+	// 构建 ChunkMapping：白名单资源 -> Chunk 0，热更资源 -> Chunk 1+
+	TSharedPtr<FJsonObject> MappingObj = MakeShareable(new FJsonObject);
+
+	// 添加白名单资源（首包 Chunk 0）
+	for (const FString& WhitelistAsset : CachedWhitelistAssetPaths)
 	{
-		TSharedPtr<FJsonObject> MappingObj = MakeShareable(new FJsonObject);
-		for (const TPair<FString, int32>& Pair : CachedChunkMapping)
-		{
-			MappingObj->SetNumberField(Pair.Key, Pair.Value);
-		}
+		MappingObj->SetNumberField(WhitelistAsset, 0);
+	}
+
+	// 添加热更资源（Chunk 1+）
+	for (const TPair<FString, int32>& Pair : CachedChunkMapping)
+	{
+		MappingObj->SetNumberField(Pair.Key, Pair.Value);
+	}
+
+	if (MappingObj->Values.Num() > 0)
+	{
 		JsonObj->SetObjectField(TEXT("ChunkMapping"), MappingObj);
+		UE_LOG(LogHotUpdateEditor, Log, TEXT("ChunkMapping: 白名单 %d 个(Chunk 0), 热更 %d 个(Chunk 1+)"),
+			CachedWhitelistAssetPaths.Num(), CachedChunkMapping.Num());
 	}
 
 	FString JsonStr;
@@ -689,23 +705,6 @@ void UHotUpdateBaseVersionBuilder::PreComputeChunkMapping()
 		UE_LOG(LogHotUpdateEditor, Error, TEXT("Chunk 分包预计算失败: %s"), *Result.ErrorMessage);
 		CachedChunkMapping.Empty();
 		CachedChunkDefinitions.Empty();
-	}
-}
-
-void UHotUpdateBaseVersionBuilder::CollectPackagesWithReferencers(IAssetRegistry& InAssetRegistry, const FString& PackageName, TArray<FString>& OutPackages)
-{
-	if (OutPackages.Contains(PackageName))
-		return;
-
-	OutPackages.Add(PackageName);
-
-	TArray<FName> HardReferencers;
-	InAssetRegistry.GetReferencers(FName(*PackageName), HardReferencers, UE::AssetRegistry::EDependencyCategory::Package,UE::AssetRegistry::EDependencyQuery::Hard);
-
-	for (const FName& Referencer : HardReferencers)
-	{
-		FString ReferencerStr = Referencer.ToString();
-		CollectPackagesWithReferencers(InAssetRegistry, ReferencerStr, OutPackages);
 	}
 }
 
@@ -881,6 +880,9 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 	TArray<FHotUpdateResolvedAssetInfo> BaseAssets;
 	TArray<FHotUpdateResolvedAssetInfo> PatchAssets;
 
+	// 获取打包配置结果（包含依赖和 Staged 文件）
+	FHotUpdatePackagingSettingsResult PackagingResult = FHotUpdatePackagingSettingsHelper::ParsePackagingSettings(true);
+
 	if (CurrentConfig.MinimalPackageConfig.bEnableMinimalPackage)
 	{
 		// 最小包模式：使用预收集的缓存数据
@@ -890,33 +892,19 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 	else
 	{
 		// 整包模式：所有资源都进首包，没有热更资源
-		TArray<FString> AllAssetPaths = CollectAllAssetPaths();
-		BaseAssets = ResolveAssetInfo(AllAssetPaths, CookedPlatformDir);
+		BaseAssets = ResolveAssetInfo(PackagingResult.AssetPaths, CookedPlatformDir);
 	}
-
-	// 6.5. 收集 DirectoriesToAlwaysStageAsUFS/NonUFS 中的 Staged 文件
-	TArray<FString> StagedPakPaths = FHotUpdatePackagingSettingsHelper::CollectStagedFilePaths();
-	for (const FString& PakPath : StagedPakPaths)
-	{
-		FString RelativePath = PakPath.RightChop(5); // 去掉 "Game/"
-		FString SourcePath = FPaths::ProjectContentDir() / RelativePath;
-
-		if (FPaths::FileExists(*SourcePath))
-		{
-			BaseAssets.Add(FHotUpdateResolvedAssetInfo::FromStagedFile(PakPath, SourcePath));
-		}
-	}
-
+	
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("收集了 %d 个基础资源, %d 个热更资源用于差异计算"),
 		BaseAssets.Num(), PatchAssets.Num());
 
-	// 7. 生成并保存 filemanifest.json
+	// 5. 生成并保存 filemanifest.json
 	if (!BuildFileManifestJson(VersionDir, VersionObject, ChunksArray, BaseAssets, PatchAssets))
 	{
 		return false;
 	}
 
-	// 8. 注册版本信息
+	// 6. 注册版本信息
 	UHotUpdateVersionManager* VersionManager = NewObject<UHotUpdateVersionManager>();
 	FHotUpdateEditorVersionInfo VersionInfo;
 	VersionInfo.VersionString = CurrentConfig.VersionString;
@@ -1118,15 +1106,6 @@ bool UHotUpdateBaseVersionBuilder::BuildManifestJson(
 
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("Manifest 保存成功: %s"), *ManifestFilePath);
 	return true;
-}
-
-TArray<FString> UHotUpdateBaseVersionBuilder::CollectAllAssetPaths() const
-{
-	FHotUpdatePackagingSettingsResult SettingsResult = FHotUpdatePackagingSettingsHelper::ParsePackagingSettings(true);
-	if (SettingsResult.Errors.Num() > 0){
-		UE_LOG(LogHotUpdateEditor, Error, TEXT("解析打包设置失败: %s"), *FString::Join(SettingsResult.Errors, TEXT("\n")));
-	}
-	return SettingsResult.AssetPaths;
 }
 
 TArray<FHotUpdateResolvedAssetInfo> UHotUpdateBaseVersionBuilder::ResolveAssetInfo(

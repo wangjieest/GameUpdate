@@ -42,14 +42,16 @@ FHotUpdatePackagingSettingsResult FHotUpdatePackagingSettingsHelper::ParsePackag
 	}
 	
 	// 2. 收集 DirectoriesToAlwaysCook 中的资源（bCookMapsOnly 时跳过）
-	TArray<FString> AlwaysCookAssets = CollectAlwaysCookAssets(Settings);
+	TArray<FString> AlwaysCookAssets = CollectAlwaysCookAssets(Settings, AssetRegistry);
 	Result.AssetPaths.Append(AlwaysCookAssets);
 
-	// 3. 过滤 NeverCook 目录
+	// 3. 收集 DirectoriesToAlwaysStageAsUFS 中的非资产文件
+	CollectStagedFilesAsUFS(Result.AssetPaths);
+
+	// 4. 过滤 NeverCook 目录
 	int32 RemovedCount = 0;
 	Result.AssetPaths.RemoveAll([&Settings, &RemovedCount](const FString& Path){
-		if (ShouldExcludeAsset(Path, Settings))
-		{
+		if (ShouldExcludeAsset(Path, Settings)){
 			RemovedCount++;
 			return true;
 		}
@@ -69,21 +71,13 @@ FHotUpdatePackagingSettingsResult FHotUpdatePackagingSettingsHelper::ParsePackag
 	TSet<FString> UniquePaths(Result.AssetPaths);
 	Result.AssetPaths = UniquePaths.Array();
 
-	// 6. 解析资源依赖（Hard + Soft，因为 Cooker 会同时打包软引用资源）
+	// 6. 解析资源依赖（递归收集依赖项）
 	if (bIncludeDependencies)
 	{
 		TSet<FString> AllPaths(Result.AssetPaths);
 		for (const FString& AssetPath : Result.AssetPaths)
 		{
-			TArray<FName> Dependencies;
-			if (AssetRegistry->GetDependencies(FName(*AssetPath), Dependencies, UE::AssetRegistry::EDependencyCategory::Package))
-			{
-				for (const FName& Dep : Dependencies)
-				{
-					FString DepStr = Dep.ToString();
-					AllPaths.Add(DepStr);
-				}
-			}
+			CollectPackageAndAllDependencies(*AssetRegistry, AssetPath, AllPaths);
 		}
 		Result.AssetPaths = AllPaths.Array();
 	}
@@ -115,18 +109,15 @@ TArray<FString> FHotUpdatePackagingSettingsHelper::CollectMapsToCook(UProjectPac
 	return Result;
 }
 
-TArray<FString> FHotUpdatePackagingSettingsHelper::CollectAlwaysCookAssets(UProjectPackagingSettings* Settings)
+TArray<FString> FHotUpdatePackagingSettingsHelper::CollectAlwaysCookAssets(UProjectPackagingSettings* Settings, IAssetRegistry* AssetRegistry)
 {
 	TArray<FString> Result;
 
-	if (!Settings)
+	if (!Settings || !AssetRegistry)
 	{
 		return Result;
 	}
-
-	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
-
+	
 	for (const FDirectoryPath& Directory : Settings->DirectoriesToAlwaysCook)
 	{
 		FString Path = Directory.Path;
@@ -231,74 +222,6 @@ FString FHotUpdatePackagingSettingsHelper::NormalizeAssetPath(const FString& Pat
 	return Result;
 }
 
-TArray<FString> FHotUpdatePackagingSettingsHelper::CollectStagedFilePaths()
-{
-	TArray<FString> StagedFilePaths;
-
-	if (const UProjectPackagingSettings* PackagingSettings = GetDefault<UProjectPackagingSettings>())
-	{
-		IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
-		FString ProjectName(FApp::GetProjectName());
-		FString ContentDir = FPaths::ProjectContentDir();
-
-		// 文件访问器，递归枚举目录中的所有文件
-		struct FStagedFileVisitor : public IPlatformFile::FDirectoryVisitor
-		{
-			TArray<FString>& OutFiles;
-			FStagedFileVisitor(TArray<FString>& InOutFiles) : OutFiles(InOutFiles) {}
-			virtual bool Visit(const TCHAR* FilenameOrDirectory, bool bIsDirectory) override
-			{
-				if (!bIsDirectory)
-				{
-					OutFiles.Add(FilenameOrDirectory);
-				}
-				return true;
-			}
-		};
-
-		auto CollectStagedDir = [&](const TArray<FDirectoryPath>& Directories)
-		{
-			for (const FDirectoryPath& DirPath : Directories)
-			{
-				if (DirPath.Path.IsEmpty()) continue;
-
-				FString FullDir = FPaths::Combine(ContentDir, DirPath.Path);
-				FPaths::NormalizeDirectoryName(FullDir);
-
-				if (!PlatformFile.DirectoryExists(*FullDir))
-				{
-					UE_LOG(LogHotUpdateEditor, Warning,
-						TEXT("Staged 目录不存在: %s"), *FullDir);
-					continue;
-				}
-
-				TArray<FString> FoundFiles;
-				FStagedFileVisitor Visitor(FoundFiles);
-				PlatformFile.IterateDirectoryRecursively(*FullDir, Visitor);
-
-				for (const FString& File : FoundFiles)
-				{
-					// 计算短路径: Content/Setting/ui.txt -> Game/Setting/ui.txt
-					FString RelativePath = File;
-					FPaths::MakePathRelativeTo(RelativePath, *ContentDir);
-					FString PakPath = TEXT("Game") / RelativePath;
-
-					StagedFilePaths.Add(PakPath);
-				}
-			}
-		};
-
-		// 收集 UFS Staged 文件（打包到 pak 内部）
-		CollectStagedDir(PackagingSettings->DirectoriesToAlwaysStageAsUFS);
-		// 收集 NonUFS Staged 文件（打包到 pak 外部，但仍需追踪）
-		CollectStagedDir(PackagingSettings->DirectoriesToAlwaysStageAsNonUFS);
-	}
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("收集了 %d 个 Staged 文件（UFS/NonUFS）"), StagedFilePaths.Num());
-
-	return StagedFilePaths;
-}
-
 bool FHotUpdatePackagingSettingsHelper::IsEditorContent(const FString& AssetPath)
 {
 	// 检查是否是编辑器相关路径
@@ -310,4 +233,118 @@ bool FHotUpdatePackagingSettingsHelper::IsEditorContent(const FString& AssetPath
 	}
 
 	return false;
+}
+
+// Staged 文件访问器，递归枚举目录中的非资产文件（排除 .uasset/.umap 等）
+class FStagedFileVisitor : public IPlatformFile::FDirectoryVisitor
+{
+public:
+	TArray<FString> FoundFiles;
+
+	virtual bool Visit(const TCHAR* FilenameOrDirectory, bool bIsDirectory) override
+	{
+		if (!bIsDirectory)
+		{
+			// 排除 UE 资产文件，这些应该通过 AssetRegistry 收集
+			FString Extension = FPaths::GetExtension(FilenameOrDirectory);
+			if (Extension != TEXT("uasset") && Extension != TEXT("umap") &&
+				Extension != TEXT("uexp") && Extension != TEXT("ubulk") &&
+				Extension != TEXT("uptnl"))
+			{
+				FoundFiles.Add(FilenameOrDirectory);
+			}
+		}
+		return true;
+	}
+};
+
+void FHotUpdatePackagingSettingsHelper::CollectStagedFilesAsUFS(TArray<FString>& OutPaths)
+{
+	UProjectPackagingSettings* Settings = GetPackagingSettings();
+	if (!Settings)
+	{
+		return;
+	}
+
+	FString ContentDir = FPaths::ProjectContentDir();
+
+	for (const FDirectoryPath& Dir : Settings->DirectoriesToAlwaysStageAsUFS)
+	{
+		CollectStagedFilesFromDirectory(Dir, ContentDir, OutPaths);
+	}
+}
+
+void FHotUpdatePackagingSettingsHelper::CollectStagedFilesFromDirectory(const FDirectoryPath& DirPath, const FString& ContentDir,
+	TArray<FString>& OutPaths)
+{
+	if (DirPath.Path.IsEmpty())
+	{
+		return;
+	}
+
+	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
+	FString FullDir = FPaths::Combine(ContentDir, DirPath.Path);
+	FPaths::NormalizeDirectoryName(FullDir);
+
+	if (!PlatformFile.DirectoryExists(*FullDir))
+	{
+		UE_LOG(LogHotUpdateEditor, Warning, TEXT("Staged 目录不存在: %s"), *FullDir);
+		return;
+	}
+
+	FStagedFileVisitor Visitor;
+	PlatformFile.IterateDirectoryRecursively(*FullDir, Visitor);
+
+	for (const FString& File : Visitor.FoundFiles)
+	{
+		// 计算短路径: Content/Setting/ui.txt -> Game/Setting/ui.txt
+		FString RelativePath = File;
+		FPaths::MakePathRelativeTo(RelativePath, *ContentDir);
+		FString PakPath = TEXT("Game") / RelativePath;
+		OutPaths.Add(PakPath);
+	}
+}
+
+void FHotUpdatePackagingSettingsHelper::CollectPackageAndAllReferencers(
+	IAssetRegistry& InAssetRegistry,
+	const FString& PackageName,
+	TSet<FString>& OutPackages)
+{
+	if (OutPackages.Contains(PackageName))
+		return;
+
+	OutPackages.Add(PackageName);
+
+	TArray<FName> HardReferencers;
+	InAssetRegistry.GetReferencers(FName(*PackageName), HardReferencers,
+		UE::AssetRegistry::EDependencyCategory::Package,
+		UE::AssetRegistry::EDependencyQuery::Hard);
+
+	for (const FName& Referencer : HardReferencers)
+	{
+		FString ReferencerStr = Referencer.ToString();
+		CollectPackageAndAllReferencers(InAssetRegistry, ReferencerStr, OutPackages);
+	}
+}
+
+void FHotUpdatePackagingSettingsHelper::CollectPackageAndAllDependencies(
+	IAssetRegistry& InAssetRegistry,
+	const FString& PackageName,
+	TSet<FString>& OutPackages)
+{
+	if (OutPackages.Contains(PackageName))
+		return;
+
+	OutPackages.Add(PackageName);
+
+	TArray<FName> Dependencies;
+	InAssetRegistry.GetDependencies(FName(*PackageName), Dependencies,
+		UE::AssetRegistry::EDependencyCategory::Package,
+		UE::AssetRegistry::EDependencyQuery::Hard | UE::AssetRegistry::EDependencyQuery::Soft);
+
+	for (const FName& Dependency : Dependencies)
+	{
+		FString DependencyStr = Dependency.ToString();
+		CollectPackageAndAllDependencies(InAssetRegistry, DependencyStr, OutPackages);
+	}
 }

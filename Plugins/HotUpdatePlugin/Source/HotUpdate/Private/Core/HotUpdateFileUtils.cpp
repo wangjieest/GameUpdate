@@ -125,6 +125,12 @@ bool UHotUpdateFileUtils::HexToBytes(const FString& HexString, TArray<uint8>& Ou
 
 bool UHotUpdateFileUtils::IsEngineAsset(const FString& PackagePath)
 {
+	// 非标准路径格式（不以 / 开头）一定不是引擎资产（如非资产文件）
+	if (!PackagePath.StartsWith(TEXT("/")))
+	{
+		return false;
+	}
+
 	// 项目资产不归入引擎
 	if (PackagePath.StartsWith(TEXT("/Game/")))
 	{

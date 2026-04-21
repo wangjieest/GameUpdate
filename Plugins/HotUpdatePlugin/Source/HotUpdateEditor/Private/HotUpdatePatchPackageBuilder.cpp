@@ -791,7 +791,6 @@ void UHotUpdatePatchPackageBuilder::BuildPatchPackageAsync(const FHotUpdatePatch
 		}
 
 	CurrentConfig.PreCollectedAssetPaths = SettingsResult.AssetPaths;
-		CurrentConfig.PreCollectedNonAssetPaths = SettingsResult.NonAssetPaths;
 
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("预收集完成（含依赖），共 %d 个资源, %d 个非资源文件"), CurrentConfig.PreCollectedAssetPaths.Num(), CurrentConfig.PreCollectedNonAssetPaths.Num());
 
@@ -929,7 +928,6 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(TArray<FString>& OutAssetPaths
 			return false;
 		}
 		AllAssetPaths = SettingsResult.AssetPaths;
-		AllNonAssetPaths = SettingsResult.NonAssetPaths;
 	}
 
 	AllAssetPaths.Append(AllNonAssetPaths);

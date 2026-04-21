@@ -14,11 +14,7 @@ struct HOTUPDATEEDITOR_API FHotUpdatePackagingSettingsResult
 {
 	/// UE 资源路径列表（含依赖）
 	TArray<FString> AssetPaths;
-
-	/// 非 UE 资源路径列表（Staged 文件）
-	/// pak 内路径格式，如 GameUpdate/Content/Setting/ui.txt
-	TArray<FString> NonAssetPaths;
-
+	
 	/// 错误信息
 	TArray<FString> Errors;
 
@@ -57,7 +53,7 @@ public:
 	 * @param Settings 项目打包设置
 	 * @return 资源路径列表
 	 */
-	static TArray<FString> CollectAlwaysCookAssets(UProjectPackagingSettings* Settings);
+	static TArray<FString> CollectAlwaysCookAssets(UProjectPackagingSettings* Settings, class IAssetRegistry* AssetRegistry);
 
 	/**
 	 * 检查路径是否在NeverCook目录中
@@ -80,13 +76,27 @@ public:
 	 */
 	static FString NormalizeAssetPath(const FString& Path);
 
+	/**
+	 * 递归收集资源包及其所有引用者（用于确定资源集合）
+	 * @param InAssetRegistry AssetRegistry 实例
+	 * @param PackageName 起始包名
+	 * @param OutPackages 输出包名集合（包含所有递归收集的包）
+	 */
+	static void CollectPackageAndAllReferencers(
+		IAssetRegistry& InAssetRegistry,
+		const FString& PackageName,
+		TSet<FString>& OutPackages);
 
 	/**
-	 * 收集 DirectoriesToAlwaysStageAsUFS/NonUFS 中的 Staged 文件路径
-	 * Staged 文件是非 UE 资产文件（如 .txt, .ini），不在 AssetRegistry 中，但会被 UAT 打包
-	 * @return Staged 文件的 pak 内路径列表（如 GameUpdate/Content/Setting/ui.txt）
+	 * 递归收集资源包及其所有依赖项（用于 Cook 资源收集）
+	 * @param InAssetRegistry AssetRegistry 实例
+	 * @param PackageName 起始包名
+	 * @param OutPackages 输出包名集合（包含所有递归收集的包）
 	 */
-	static TArray<FString> CollectStagedFilePaths();
+	static void CollectPackageAndAllDependencies(
+		IAssetRegistry& InAssetRegistry,
+		const FString& PackageName,
+		TSet<FString>& OutPackages);
 
 private:
 	/**
@@ -95,4 +105,21 @@ private:
 	 * @return 是否是编辑器内容
 	 */
 	static bool IsEditorContent(const FString& AssetPath);
+
+	/**
+	 * 收集 DirectoriesToAlwaysStageAsUFS 中的非资产文件（打包到 pak 内部）
+	 * @param OutPaths 输出的 pak 内路径列表（如 Game/Setting/ui.txt）
+	 */
+	static void CollectStagedFilesAsUFS(TArray<FString>& OutPaths);
+
+	/**
+	 * 从单个目录收集非资产文件
+	 * @param DirPath 目录路径配置
+	 * @param ContentDir Content 目录路径
+	 * @param OutPaths 输出的 pak 内路径列表
+	 */
+	static void CollectStagedFilesFromDirectory(
+		const FDirectoryPath& DirPath,
+		const FString& ContentDir,
+		TArray<FString>& OutPaths);
 };

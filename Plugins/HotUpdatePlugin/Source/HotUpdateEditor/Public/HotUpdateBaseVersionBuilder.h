@@ -231,25 +231,9 @@ private:
 		TArray<TSharedPtr<FJsonValue>>& OutChunksArray) const;
 
 	/**
-	 * 从打包设置收集所有被打包的资源路径（含依赖解析）
-	 */
-	TArray<FString> CollectAllAssetPaths() const;
-
-	/**
 	 * 预计算非白名单资源的 Chunk 分配，用 ChunkManager 按策略分包
 	 */
 	void PreComputeChunkMapping();
-
-	/**
-	 * 递归收集资源包及其引用者（用于确定首包 Chunk0 资源集合）
-	 * @param InAssetRegistry AssetRegistry 实例
-	 * @param PackageName 起始包名
-	 * @param OutPackages 输出包名集合（包含所有递归收集的包）
-	 */
-	static void CollectPackagesWithReferencers(
-		IAssetRegistry& InAssetRegistry,
-		const FString& PackageName,
-		TArray<FString>& OutPackages);
 
 	/**
 	 * 解析资源磁盘路径并构建解析信息（消除 ConvertAssetPathToFileName 的冗余 GetAssetDiskPath 调用）

@@ -8,7 +8,6 @@
 #include "HotUpdatePatchPackageBuilder.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
-#include "HAL/PlatformFileManager.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/Paths.h"
 
@@ -75,7 +74,7 @@ int32 UHotUpdateCommandlet::Main(const FString& Params)
 
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("AssetRegistry 加载完成"));
 
-	int32 Result = 0;
+	int32 Result;
 
 	if (Mode == TEXT("base"))
 	{
@@ -128,8 +127,7 @@ bool UHotUpdateCommandlet::ParseCommandLine(const FString& Params)
 	FString ChunkStrategyStr;
 	if (FParse::Value(*Params, TEXT("chunkstrategy="), ChunkStrategyStr))
 	{
-		UEnum* ChunkStrategyEnum = StaticEnum<EHotUpdateChunkStrategy>();
-		if (ChunkStrategyEnum)
+		if (UEnum* ChunkStrategyEnum = StaticEnum<EHotUpdateChunkStrategy>())
 		{
 			int64 EnumValue = ChunkStrategyEnum->GetValueByNameString(ChunkStrategyStr);
 			if (EnumValue >= 0)

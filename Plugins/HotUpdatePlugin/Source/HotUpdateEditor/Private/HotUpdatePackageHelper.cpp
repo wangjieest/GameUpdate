@@ -3,13 +3,9 @@
 #include "HotUpdatePackageHelper.h"
 #include "HotUpdateEditor.h"
 #include "HotUpdateUtils.h"
-#include "Core/HotUpdateFileUtils.h"
-#include "HAL/PlatformFileManager.h"
-#include "Misc/FileHelper.h"
 #include "Misc/MonitoredProcess.h"
 #include "Misc/Paths.h"
 #include "Misc/App.h"
-#include "Misc/SecureHash.h"
 #include "JsonObjectConverter.h"
 #include "Interfaces/IPluginManager.h"
 
@@ -18,20 +14,20 @@ bool FHotUpdatePackageHelper::CompileProject(EHotUpdatePlatform Platform)
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始编译项目..."));
 
 	FString EngineDir = FPaths::EngineDir();
-	FString UBTPath = FPaths::ConvertRelativePathToFull(
+	const FString UBTPath = FPaths::ConvertRelativePathToFull(
 		FPaths::Combine(EngineDir, TEXT("Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll")));
 
-	FString ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
-	FString PlatformName = HotUpdateUtils::GetPlatformDirectoryName(Platform);
-	FString BuildConfig = TEXT("Development");
+	const FString ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
+	const FString PlatformName = HotUpdateUtils::GetPlatformDirectoryName(Platform);
+	const FString BuildConfig = TEXT("Development");
 
-	FString Params = FString::Printf(
+	const FString Params = FString::Printf(
 		TEXT("\"%s\" GameUpdate %s %s -project=\"%s\""),
 		*UBTPath, *PlatformName, *BuildConfig, *ProjectPath);
 
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("执行编译: dotnet %s"), *Params);
 
-	FString CommandLine = FString::Printf(TEXT("/c dotnet %s"), *Params);
+	const FString CommandLine = FString::Printf(TEXT("/c dotnet %s"), *Params);
 
 	FMonitoredProcess Process(TEXT("cmd.exe"), CommandLine, true);
 
@@ -80,8 +76,8 @@ bool FHotUpdatePackageHelper::CookAssets(EHotUpdatePlatform Platform, const TArr
 #else
 	FString ExePath = FPaths::ConvertRelativePathToFull(EngineDir / TEXT("Binaries/Win64/UnrealEditor-Cmd.exe"));
 #endif
-	FString ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
-	FString CookPlatform = HotUpdateUtils::GetPlatformString(Platform);
+	const FString ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
+	const FString CookPlatform = HotUpdateUtils::GetPlatformString(Platform);
 
 	FString Params;
 	if (AssetsToCook.Num() > 0)
@@ -318,7 +314,7 @@ FString FHotUpdatePackageHelper::GetAssetSourcePath(const FString& AssetPath)
 		return TEXT("");
 	}
 
-	FString AbsolutePath = FPaths::ConvertRelativePathToFull(ResolvedPath);
+	const FString AbsolutePath = FPaths::ConvertRelativePathToFull(ResolvedPath);
 
 	if (FPaths::FileExists(AbsolutePath + TEXT(".umap")))
 		return AbsolutePath + TEXT(".umap");
@@ -337,13 +333,13 @@ FString FHotUpdatePackageHelper::ConvertAssetPathToFileName(const FString& Asset
 		FileName.RightChopInline(1);
 	}
 
-	FString CurrentExtension = FPaths::GetExtension(FileName);
+	const FString CurrentExtension = FPaths::GetExtension(FileName);
 	if (!CurrentExtension.IsEmpty() && CurrentExtension != TEXT("uasset") && CurrentExtension != TEXT("umap"))
 	{
 		return FileName;
 	}
 
-	FString DiskPath = GetAssetDiskPath(AssetPath, CookedPlatformDir);
+	const FString DiskPath = GetAssetDiskPath(AssetPath, CookedPlatformDir);
 	if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 	{
 		FString Extension = FPaths::GetExtension(DiskPath);

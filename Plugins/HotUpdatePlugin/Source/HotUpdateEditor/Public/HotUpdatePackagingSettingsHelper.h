@@ -68,9 +68,10 @@ public:
 	/**
 	 * 从配置中收集要AlwaysCook的目录下的资源
 	 * @param Settings 项目打包设置
+	 * @param AssetRegistry
 	 * @return 资源路径列表
 	 */
-	static TArray<FString> CollectAlwaysCookAssets(UProjectPackagingSettings* Settings, class IAssetRegistry* AssetRegistry);
+	static TArray<FString> CollectAlwaysCookAssets(UProjectPackagingSettings* Settings, const class IAssetRegistry* AssetRegistry);
 
 	/**
 	 * 检查路径是否在NeverCook目录中
@@ -110,7 +111,6 @@ private:
 	/**
 	 * 从单个目录收集非资产文件
 	 * @param DirPath 目录路径配置
-	 * @param ContentDir Content 目录路径
 	 * @param OutStagedFiles 输出的 Staged 文件列表
 	 */
 	static void CollectStagedFilesFromDirectory(

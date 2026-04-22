@@ -9,67 +9,6 @@
 
 class IAssetRegistry;
 
-/**
- * 基础版本构建进度
- */
-USTRUCT(BlueprintType)
-struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildProgress
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly)
-	FString CurrentStage;
-
-	UPROPERTY(BlueprintReadOnly)
-	float ProgressPercent;
-
-	UPROPERTY(BlueprintReadOnly)
-	FString StatusMessage;
-
-	FHotUpdateBaseVersionBuildProgress()
-		: ProgressPercent(0.0f)
-	{
-	}
-};
-
-/**
- * 基础版本构建结果
- */
-USTRUCT(BlueprintType)
-struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildResult
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly)
-	bool bSuccess;
-
-	UPROPERTY(BlueprintReadOnly)
-	FString VersionString;
-
-	UPROPERTY(BlueprintReadOnly)
-	EHotUpdatePlatform Platform;
-
-	/// 可执行文件路径 (exe/apk)
-	UPROPERTY(BlueprintReadOnly)
-	FString ExecutablePath;
-
-	/// 输出目录
-	UPROPERTY(BlueprintReadOnly)
-	FString OutputDirectory;
-
-	/// 资源Hash清单路径
-	UPROPERTY(BlueprintReadOnly)
-	FString ResourceHashPath;
-
-	/// 错误信息
-	UPROPERTY(BlueprintReadOnly)
-	FString ErrorMessage;
-
-	FHotUpdateBaseVersionBuildResult()
-		: bSuccess(false), Platform(EHotUpdatePlatform::Windows)
-	{
-	}
-};
 
 // 构建进度委托 (使用多播委托以支持 Slate 控件绑定)
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnBaseVersionBuildProgressDelegate, const FHotUpdateBaseVersionBuildProgress&);
@@ -107,10 +46,6 @@ struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	EHotUpdateAndroidTextureFormat AndroidTextureFormat;
 
-	/// 是否打包所有资源（true）还是只打包项目资源（false）
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	bool bPackageAll;
-
 	/// 是否跳过编译步骤（如果项目已编译，可以跳过以避免 Live Coding 冲突）
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bSkipBuild;
@@ -134,7 +69,6 @@ struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildConfig
 		, BuildConfiguration(EHotUpdateBuildConfiguration::Development)
 		, AndroidPackageName(TEXT("com.dragonli.czm"))
 		, AndroidTextureFormat(EHotUpdateAndroidTextureFormat::ETC2)
-		, bPackageAll(true)
 		, bSkipBuild(false)
 		, bSynchronousMode(false)
 	{
@@ -195,7 +129,7 @@ private:
 	/**
 	 * 执行 UAT 打包命令
 	 */
-	bool ExecuteUATPackage(const FString& UATCommand, FString& OutError);
+	bool ExecuteUATPackage(const FString& UATCommand, FString& OutError) const;
 
 	/**
 	 * 生成 UAT 命令行
@@ -216,10 +150,12 @@ private:
 	/**
 	 * 收集 IoStore 容器文件信息（.utoc/.ucas）
 	 */
-	TArray<FHotUpdateContainerInfo> CollectContainerInfos(const FString& PlatformDir, const FString& VersionDir) const;
+	static TArray<FHotUpdateContainerInfo> CollectContainerInfos(const FString& PlatformDir, const FString& VersionDir);
 
 	/**
 	 * 生成并保存 manifest.json
+	 * @param VersionDir
+	 * @param ContainerInfos
 	 * @param OutVersionObject 共享的版本信息 JSON 对象（供 filemanifest.json 复用）
 	 * @param OutChunksArray 共享的 chunks 数组（供 filemanifest.json 复用）
 	 */
@@ -237,9 +173,9 @@ private:
 	/**
 	 * 解析资源磁盘路径并构建解析信息（消除 ConvertAssetPathToFileName 的冗余 GetAssetDiskPath 调用）
 	 */
-	TArray<FHotUpdateResolvedAssetInfo> ResolveAssetInfo(
+	static TArray<FHotUpdateResolvedAssetInfo> ResolveAssetInfo(
 		const TArray<FString>& AssetPaths,
-		const FString& CookedPlatformDir) const;
+		const FString& CookedPlatformDir);
 
 	/**
 	 * 生成并保存 filemanifest.json（去重基础/热更资源的文件条目生成）
@@ -254,7 +190,7 @@ private:
 	/**
 	 * 检查打包输出是否存在
 	 */
-	bool CheckBuildOutput(const FString& OutputDir, FString& OutExecutablePath);
+	bool CheckBuildOutput(const FString& OutputDir, FString& OutExecutablePath) const;
 
 	/**
 	 * 更新进度

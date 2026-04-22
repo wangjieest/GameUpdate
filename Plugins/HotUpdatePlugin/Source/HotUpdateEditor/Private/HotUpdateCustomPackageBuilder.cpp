@@ -78,7 +78,7 @@ FString FHotUpdateCustomPackageBuilder::ResolveDiskPathToPackageName(const FStri
 	return TEXT("");
 }
 
-FString FHotUpdateCustomPackageBuilder::DetermineNonAssetPakPath(const FString& DiskPath) const
+FString FHotUpdateCustomPackageBuilder::DetermineNonAssetPakPath(const FString& DiskPath)
 {
 	// 使用 /Game/ 前缀使 GetPakInternalPath → MapToPakMountPath 能正确映射
 	FString ProjectDir = FPaths::ProjectDir();

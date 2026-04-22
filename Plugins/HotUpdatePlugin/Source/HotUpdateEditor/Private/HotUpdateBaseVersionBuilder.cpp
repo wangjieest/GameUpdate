@@ -9,21 +9,14 @@
 #include "HotUpdateUtils.h"
 #include "HotUpdateAssetFilter.h"
 #include "HotUpdateChunkManager.h"
-#include "Core/HotUpdateSettings.h"
 #include "HAL/PlatformProcess.h"
-#include "HAL/PlatformFileManager.h"
-#include "HAL/PlatformMisc.h"
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
-#include "Misc/App.h"
-#include "Misc/SecureHash.h"
 #include "Misc/MonitoredProcess.h"
 #include "JsonObjectConverter.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
-#include "Settings/ProjectPackagingSettings.h"
 #include "Misc/PackageName.h"
-#include "Interfaces/IPluginManager.h"
 
 /**
  * 资源解析结果（内部使用，用于在 SaveResourceHashesInGameThread 的各步骤间传递数据）
@@ -136,16 +129,19 @@ void FHotUpdateBaseVersionBuilder::BuildBaseVersion(const FHotUpdateBaseVersionB
 
 	// 验证配置中所有字符串成员的有效性，防止赋值时崩溃
 	// 检查 MinimalPackageConfig 中的目录路径是否有效
-	for (const FDirectoryPath& Dir : Config.MinimalPackageConfig.WhitelistDirectories)
+	if (CurrentConfig.MinimalPackageConfig.bEnableMinimalPackage)
 	{
-		if (Dir.Path.GetCharArray().GetData() == nullptr)
+		for (const FDirectoryPath& Dir : Config.MinimalPackageConfig.WhitelistDirectories)
 		{
-			UE_LOG(LogHotUpdateEditor, Error, TEXT("WhitelistDirectories 包含无效的 FDirectoryPath"));
-			FHotUpdateBaseVersionBuildResult Result;
-			Result.bSuccess = false;
-			Result.ErrorMessage = TEXT("白名单目录配置包含无效数据");
-			OnBuildComplete.Broadcast(Result);
-			return;
+			if (Dir.Path.IsEmpty())
+			{
+				UE_LOG(LogHotUpdateEditor, Error, TEXT("WhitelistDirectories 包含无效的 FDirectoryPath"));
+				FHotUpdateBaseVersionBuildResult Result;
+				Result.bSuccess = false;
+				Result.ErrorMessage = TEXT("白名单目录配置包含无效数据");
+				OnBuildComplete.Broadcast(Result);
+				return;
+			}
 		}
 	}
 
@@ -520,39 +516,36 @@ FString FHotUpdateBaseVersionBuilder::GenerateUATCommand()
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("MinimalPackage mode: ScriptsForProject=%s, HotUpdateOutputDir=%s"), *ProjectPath, *HotUpdatePaksDir);
 	}
 
-	if (CurrentConfig.bPackageAll)
+	Params += TEXT(" -package");
+
+	// Android 特定配置
+	if (CurrentConfig.Platform == EHotUpdatePlatform::Android)
 	{
-		Params += TEXT(" -package");
+		// 根据纹理格式配置 cookflavor
+		FString TextureFormat;
+		switch (CurrentConfig.AndroidTextureFormat)
+		{
+		case EHotUpdateAndroidTextureFormat::ETC2:
+			TextureFormat = TEXT("ETC2");
+			break;
+		case EHotUpdateAndroidTextureFormat::ASTC:
+			TextureFormat = TEXT("ASTC");
+			break;
+		case EHotUpdateAndroidTextureFormat::DXT:
+			TextureFormat = TEXT("DXT");
+			break;
+		case EHotUpdateAndroidTextureFormat::Multi:
+			// Multi 模式不传 cookflavor，UAT 根据项目设置自动处理多格式
+				break;
+		default:
+			TextureFormat = TEXT("ETC2");
+			break;
 		}
 
-		// Android 特定配置
-		if (CurrentConfig.Platform == EHotUpdatePlatform::Android)
-	{
-			// 根据纹理格式配置 cookflavor
-			FString TextureFormat;
-			switch (CurrentConfig.AndroidTextureFormat)
-			{
-			case EHotUpdateAndroidTextureFormat::ETC2:
-				TextureFormat = TEXT("ETC2");
-				break;
-			case EHotUpdateAndroidTextureFormat::ASTC:
-				TextureFormat = TEXT("ASTC");
-				break;
-			case EHotUpdateAndroidTextureFormat::DXT:
-				TextureFormat = TEXT("DXT");
-				break;
-			case EHotUpdateAndroidTextureFormat::Multi:
-				// Multi 模式不传 cookflavor，UAT 根据项目设置自动处理多格式
-				break;
-			default:
-				TextureFormat = TEXT("ETC2");
-				break;
-			}
-
-			if (!TextureFormat.IsEmpty())
-			{
-				Params += FString::Printf(TEXT(" -cookflavor=%s"), *TextureFormat);
-			}
+		if (!TextureFormat.IsEmpty())
+		{
+			Params += FString::Printf(TEXT(" -cookflavor=%s"), *TextureFormat);
+		}
 
 		// 添加包名配置
 		if (!CurrentConfig.AndroidPackageName.IsEmpty())
@@ -571,32 +564,23 @@ FString FHotUpdateBaseVersionBuilder::GenerateUATCommand()
 	// 格式: cmd.exe /c "path\to\RunUAT.bat BuildCookRun ..."
 	FString Command;
 #if PLATFORM_WINDOWS
-	Command = FString::Printf(
-		TEXT("cmd.exe /c \"%s %s\""),
-		*UATPath,
-		*Params
-	);
+	Command = FString::Printf(TEXT("cmd.exe /c \"%s %s\""), *UATPath, *Params);
 #else
-	Command = FString::Printf(
-		TEXT("\"%s\"%s"),
-		*UATPath,
-		*Params
-	);
+	Command = FString::Printf(TEXT("\"%s\"%s"), *UATPath, *Params);
 #endif
 
 	return Command;
 }
 
-
 void FHotUpdateBaseVersionBuilder::WriteMinimalPackageConfig()
 {
-	FString ConfigFile = FPaths::ProjectIntermediateDir() / TEXT("MinimalPackageConfig.json");
+	const FString ConfigFile = FPaths::ProjectIntermediateDir() / TEXT("MinimalPackageConfig.json");
 
-	TSharedPtr<FJsonObject> JsonObj = MakeShareable(new FJsonObject);
+	const TSharedPtr<FJsonObject> JsonObj = MakeShareable(new FJsonObject);
 	JsonObj->SetBoolField(TEXT("bEnableMinimalPackage"), CurrentConfig.MinimalPackageConfig.bEnableMinimalPackage);
 
 	// 构建 ChunkMapping：白名单资源 -> Chunk 0，热更资源 -> Chunk 1+
-	TSharedPtr<FJsonObject> MappingObj = MakeShareable(new FJsonObject);
+	const TSharedPtr<FJsonObject> MappingObj = MakeShareable(new FJsonObject);
 
 	// 添加白名单资源（首包 Chunk 0）
 	for (const FString& WhitelistAsset : CachedWhitelistAssetPaths)
@@ -685,10 +669,7 @@ void FHotUpdateBaseVersionBuilder::PreComputeChunkMapping()
 		ChunkConfig.DefaultChunkId = 11;  // 未匹配的资源默认分配到 Chunk 11
 	}
 
-	// 使用 FHotUpdateChunkManager 执行分包分析
-	FHotUpdateChunkManager ChunkManager;
-	FHotUpdateChunkAnalysisResult Result = ChunkManager.AnalyzeAndCreateChunks(
-		PatchAssetPaths, AssetDiskPaths, ChunkConfig);
+	FHotUpdateChunkAnalysisResult Result = FHotUpdateChunkManager::AnalyzeAndCreateChunks(PatchAssetPaths, AssetDiskPaths, ChunkConfig);
 
 	if (Result.bSuccess)
 	{
@@ -714,7 +695,7 @@ void FHotUpdateBaseVersionBuilder::PreComputeChunkMapping()
 	}
 }
 
-bool FHotUpdateBaseVersionBuilder::ExecuteUATPackage(const FString& UATCommand, FString& OutError)
+bool FHotUpdateBaseVersionBuilder::ExecuteUATPackage(const FString& UATCommand, FString& OutError) const
 {
 	// 解析命令行
 	FString ExecutablePath;
@@ -801,7 +782,7 @@ bool FHotUpdateBaseVersionBuilder::ExecuteUATPackage(const FString& UATCommand, 
 	return true;
 }
 
-bool FHotUpdateBaseVersionBuilder::CheckBuildOutput(const FString& OutputDir, FString& OutExecutablePath)
+bool FHotUpdateBaseVersionBuilder::CheckBuildOutput(const FString& OutputDir, FString& OutExecutablePath) const
 {
 	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
 
@@ -974,8 +955,7 @@ FString FHotUpdateBaseVersionBuilder::ResolvePlatformOutputDir() const
 	return PlatformDir;
 }
 
-TArray<FHotUpdateContainerInfo> FHotUpdateBaseVersionBuilder::CollectContainerInfos(
-	const FString& PlatformDir, const FString& VersionDir) const
+TArray<FHotUpdateContainerInfo> FHotUpdateBaseVersionBuilder::CollectContainerInfos(const FString& PlatformDir, const FString& VersionDir)
 {
 	TArray<FHotUpdateContainerInfo> ContainerInfos;
 	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
@@ -1138,15 +1118,14 @@ bool FHotUpdateBaseVersionBuilder::BuildManifestJson(
 	return true;
 }
 
-TArray<FHotUpdateResolvedAssetInfo> FHotUpdateBaseVersionBuilder::ResolveAssetInfo(
-	const TArray<FString>& AssetPaths, const FString& CookedPlatformDir) const
+TArray<FHotUpdateResolvedAssetInfo> FHotUpdateBaseVersionBuilder::ResolveAssetInfo(const TArray<FString>& AssetPaths, const FString& CookedPlatformDir)
 {
 	TArray<FHotUpdateResolvedAssetInfo> Result;
 	Result.Reserve(AssetPaths.Num());
 
 	for (const FString& AssetPath : AssetPaths)
 	{
-		FString DiskPath = FHotUpdatePackageHelper::GetAssetDiskPath(AssetPath, CookedPlatformDir);
+		const FString DiskPath = FHotUpdatePackageHelper::GetAssetDiskPath(AssetPath, CookedPlatformDir);
 
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
@@ -1173,7 +1152,7 @@ bool FHotUpdateBaseVersionBuilder::BuildFileManifestJson(
 	const TArray<FHotUpdateResolvedAssetInfo>& BaseAssets,
 	const TArray<FHotUpdateResolvedAssetInfo>& PatchAssets) const
 {
-	TSharedPtr<FJsonObject> FileManifestObj = MakeShareable(new FJsonObject);
+	const TSharedPtr<FJsonObject> FileManifestObj = MakeShareable(new FJsonObject);
 	FileManifestObj->SetObjectField(TEXT("version"), VersionObject);
 	FileManifestObj->SetArrayField(TEXT("chunks"), ChunksArray);
 

@@ -34,7 +34,7 @@ struct HOTUPDATEEDITOR_API FHotUpdateIoStoreProgress
 
 	float GetProgressPercent() const
 	{
-		return TotalFiles > 0 ? (float)ProcessedFiles / TotalFiles * 100.0f : 0.0f;
+		return TotalFiles > 0 ? static_cast<float>(ProcessedFiles) / TotalFiles * 100.0f : 0.0f;
 	}
 };
 
@@ -90,7 +90,7 @@ public:
 	/**
 	 * 验证配置
 	 */
-	bool ValidateConfig(const FHotUpdateIoStoreConfig& Config, FString& OutErrorMessage);
+	static bool ValidateConfig(const FHotUpdateIoStoreConfig& Config, FString& OutErrorMessage);
 
 	// 进度委托
 	FOnIoStoreProgressDelegate OnProgress;
@@ -111,28 +111,29 @@ private:
 	/**
 	 * 生成加密密钥文件
 	 */
-	FString GenerateCryptoKeyFile(
+	static FString GenerateCryptoKeyFile(
 		const FString& TempDir,
 		const FHotUpdateIoStoreConfig& Config);
 
 	/**
 	 * 查找 UnrealPak 工具路径
 	 */
-	FString FindUnrealPakPath(FString& OutErrorMessage);
+	static FString FindUnrealPakPath(FString& OutErrorMessage);
 
 	/**
 	 * 准备临时目录
 	 */
-	bool PrepareTempDirectory(
+	static bool PrepareTempDirectory(
 		const FString& TempDir,
 		FString& OutErrorMessage);
 
 	/**
 	 * 从 AssetPath 获取 Pak 内部路径
 	 * @param AssetPath UE 包路径（如 "/Game/Maps/Start"）
+	 * @param DiskPath
 	 * @return Pak 内部路径（如 "/Game/Maps/Start.umap"）
 	 */
-	FString GetPakInternalPath(const FString& AssetPath, const FString& DiskPath = TEXT(""));
+	static FString GetPakInternalPath(const FString& AssetPath, const FString& DiskPath = TEXT(""));
 
 	/**
 	 * 确定资源文件的扩展名
@@ -141,7 +142,7 @@ private:
 	 * @param DiskPath 磁盘路径（用于回退获取扩展名）
 	 * @return 应追加的扩展名（不含点号，空表示不追加）
 	 */
-	FString DetermineAssetExtension(FString& InOutPakPath, const FString& DiskPath);
+	static FString DetermineAssetExtension(FString& InOutPakPath, const FString& DiskPath);
 
 	/**
 	 * 将虚拟包路径映射为 Pak 内部挂载路径
@@ -151,7 +152,7 @@ private:
 	 * @param PakPath 虚拟包路径（不含扩展名，以 / 开头）
 	 * @return Pak 内部 Dest 路径（不含扩展名）
 	 */
-	FString MapToPakMountPath(const FString& PakPath);
+	static FString MapToPakMountPath(const FString& PakPath);
 
 	/**
 	 * 将插件包路径映射为 Pak 内部挂载路径
@@ -160,7 +161,7 @@ private:
 	 * @param ProjectName 项目名称
 	 * @return Pak 内部 Dest 路径
 	 */
-	FString MapPluginPathToPakMountPath(const FString& PluginPakPath, const FString& ProjectName);
+	static FString MapPluginPathToPakMountPath(const FString& PluginPakPath, const FString& ProjectName);
 
 	/**
 	 * 生成响应文件
@@ -176,14 +177,14 @@ private:
 	/**
 	 * 准备输出目录，删除已存在的输出文件
 	 */
-	bool PrepareOutputDirectory(
+	static bool PrepareOutputDirectory(
 		const FString& OutputPath,
 		FString& OutErrorMessage);
 
 	/**
 	 * 构建 UnrealPak 命令行参数
 	 */
-	FString BuildUnrealPakCommandLine(
+	static FString BuildUnrealPakCommandLine(
 		const FString& OutputPath,
 		const FString& ResponseFilePath,
 		const FString& CryptoKeyPath,
@@ -192,7 +193,7 @@ private:
 	/**
 	 * 执行 UnrealPak 并验证结果
 	 */
-	bool ExecuteUnrealPak(
+	static bool ExecuteUnrealPak(
 		const FString& UnrealPakPath,
 		const FString& CmdLine,
 		const FString& OutputPath,
@@ -201,7 +202,7 @@ private:
 	/**
 	 * 清理临时目录
 	 */
-	void CleanupTempDirectory(const FString& TempDir);
+	static void CleanupTempDirectory(const FString& TempDir);
 
 	/**
 	 * 更新进度

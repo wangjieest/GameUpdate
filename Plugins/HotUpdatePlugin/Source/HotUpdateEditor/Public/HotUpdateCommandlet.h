@@ -40,7 +40,7 @@ private:
 	bool ParseCommandLine(const FString& Params);
 
 	/** 显示帮助信息 */
-	void ShowHelp();
+	static void ShowHelp();
 
 	/** 执行完整基础版本打包（exe/apk） */
 	int32 ExecuteBasePackage();
@@ -49,10 +49,10 @@ private:
 	int32 ExecutePatchPackage();
 
 	/** 从命令行参数转换为平台枚举 */
-	EHotUpdatePlatform ParsePlatform(const FString& InPlatformStr);
+	static EHotUpdatePlatform ParsePlatform(const FString& InPlatformStr);
 
 	/** 从命令行参数转换为 Android 纹理格式枚举 */
-	EHotUpdateAndroidTextureFormat ParseTextureFormat(const FString& InFormatStr);
+	static EHotUpdateAndroidTextureFormat ParseTextureFormat(const FString& InFormatStr);
 
 private:
 	// 命令行参数

@@ -6,18 +6,11 @@
 #include "Widgets/HotUpdateBaseVersionPanel.h"
 #include "Widgets/HotUpdateVersionDiffPanel.h"
 #include "Widgets/HotUpdatePakViewerPanel.h"
-#include "HotUpdateEditor.h"
-#include "HotUpdateEditorStyle.h"
 #include "EditorStyleSet.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
-#include "Widgets/Text/STextBlock.h"
-#include "Widgets/Input/SButton.h"
-#include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SBox.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "Styling/AppStyle.h"
 
 #define LOCTEXT_NAMESPACE "HotUpdateMainWindow"
 

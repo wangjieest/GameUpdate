@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "Core/HotUpdateTypes.h"
-#include "Core/HotUpdatePakTypes.h"
 #include "HotUpdateEditorTypes.generated.h"
 
 /**
@@ -74,6 +73,68 @@ enum class EHotUpdateDependencyStrategy : uint8
 	HardOnly        UMETA(DisplayName = "仅硬依赖"),
 	SoftOnly        UMETA(DisplayName = "仅软依赖"),
 	None            UMETA(DisplayName = "不包含依赖")
+};
+
+/**
+ * 基础版本构建进度
+ */
+USTRUCT(BlueprintType)
+struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildProgress
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	FString CurrentStage;
+
+	UPROPERTY(BlueprintReadOnly)
+	float ProgressPercent;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString StatusMessage;
+
+	FHotUpdateBaseVersionBuildProgress()
+		: ProgressPercent(0.0f)
+	{
+	}
+};
+
+/**
+ * 基础版本构建结果
+ */
+USTRUCT(BlueprintType)
+struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildResult
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	bool bSuccess;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString VersionString;
+
+	UPROPERTY(BlueprintReadOnly)
+	EHotUpdatePlatform Platform;
+
+	/// 可执行文件路径 (exe/apk)
+	UPROPERTY(BlueprintReadOnly)
+	FString ExecutablePath;
+
+	/// 输出目录
+	UPROPERTY(BlueprintReadOnly)
+	FString OutputDirectory;
+
+	/// 资源Hash清单路径
+	UPROPERTY(BlueprintReadOnly)
+	FString ResourceHashPath;
+
+	/// 错误信息
+	UPROPERTY(BlueprintReadOnly)
+	FString ErrorMessage;
+
+	FHotUpdateBaseVersionBuildResult()
+		: bSuccess(false), Platform(EHotUpdatePlatform::Windows)
+	{
+	}
 };
 
 /**

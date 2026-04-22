@@ -1,7 +1,6 @@
 // Copyright czm. All Rights Reserved.
 
 #include "Widgets/HotUpdateCustomPackagingPanel.h"
-#include "HotUpdateEditor.h"
 #include "HotUpdateEditorSettings.h"
 #include "HotUpdateEditorStyle.h"
 #include "HotUpdateNotificationHelper.h"

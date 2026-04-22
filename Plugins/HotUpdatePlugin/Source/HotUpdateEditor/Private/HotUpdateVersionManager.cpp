@@ -3,7 +3,6 @@
 #include "HotUpdateVersionManager.h"
 #include "HotUpdateEditor.h"
 #include "HotUpdateUtils.h"
-#include "HAL/PlatformFileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "JsonObjectConverter.h"
@@ -61,7 +60,7 @@ bool FHotUpdateVersionManager::UnregisterVersion(const FString& VersionString, E
 	return SaveVersionRegistry();
 }
 
-TArray<FHotUpdateEditorVersionInfo> FHotUpdateVersionManager::GetVersionHistory(EHotUpdatePlatform Platform)
+TArray<FHotUpdateEditorVersionInfo> FHotUpdateVersionManager::GetVersionHistory(const EHotUpdatePlatform Platform)
 {
 	FScopeLock Lock(&RegistryLock);
 
@@ -74,8 +73,7 @@ TArray<FHotUpdateEditorVersionInfo> FHotUpdateVersionManager::GetVersionHistory(
 
 	for (const auto& Pair : VersionRegistry)
 	{
-		const FHotUpdateEditorVersionInfo* Info = Pair.Value.Find(Platform);
-		if (Info)
+		if (const FHotUpdateEditorVersionInfo* Info = Pair.Value.Find(Platform))
 		{
 			Result.Add(*Info);
 		}
@@ -99,11 +97,9 @@ FHotUpdateEditorVersionInfo FHotUpdateVersionManager::GetVersionInfo(const FStri
 		LoadVersionRegistry();
 	}
 
-	const TMap<EHotUpdatePlatform, FHotUpdateEditorVersionInfo>* PlatformMap = VersionRegistry.Find(VersionString);
-	if (PlatformMap)
+	if (const TMap<EHotUpdatePlatform, FHotUpdateEditorVersionInfo>* PlatformMap = VersionRegistry.Find(VersionString))
 	{
-		const FHotUpdateEditorVersionInfo* Info = PlatformMap->Find(Platform);
-		if (Info)
+		if (const FHotUpdateEditorVersionInfo* Info = PlatformMap->Find(Platform))
 		{
 			return *Info;
 		}
@@ -168,8 +164,7 @@ FString FHotUpdateVersionManager::GetLatestVersion(EHotUpdatePlatform Platform)
 
 	for (const auto& Pair : VersionRegistry)
 	{
-		const FHotUpdateEditorVersionInfo* Info = Pair.Value.Find(Platform);
-		if (Info)
+		if (const FHotUpdateEditorVersionInfo* Info = Pair.Value.Find(Platform))
 		{
 			if (LatestVersion.IsEmpty() || CompareVersions(Info->VersionString, LatestVersion) > 0)
 			{
@@ -223,8 +218,7 @@ TArray<FHotUpdateVersionSelectItem> FHotUpdateVersionManager::GetSelectableVersi
 
 	for (const auto& Pair : VersionRegistry)
 	{
-		const FHotUpdateEditorVersionInfo* Info = Pair.Value.Find(Platform);
-		if (Info)
+		if (const FHotUpdateEditorVersionInfo* Info = Pair.Value.Find(Platform))
 		{
 			FHotUpdateVersionSelectItem Item;
 			Item.VersionString = Info->VersionString;

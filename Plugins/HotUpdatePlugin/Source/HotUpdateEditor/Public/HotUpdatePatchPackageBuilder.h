@@ -29,7 +29,7 @@ public:
 	bool IsBuilding() const { return bIsBuilding; }
 	
 	/** 验证配置 */
-	bool ValidateConfig(const FHotUpdatePatchPackageConfig& Config, FString& OutErrorMessage);
+	static bool ValidateConfig(const FHotUpdatePatchPackageConfig& Config, FString& OutErrorMessage);
 	
 	// 进度委托
 	FOnPackageProgressDelegate OnProgress;
@@ -43,16 +43,16 @@ private:
 		TArray<FString>& OutAssetPaths,
 		TMap<FString, FString>& OutAssetDiskPaths,
 		TMap<FString, FString>& OutAssetSourcePaths,
-		FString& OutErrorMessage);
+		FString& OutErrorMessage) const;
 
 	/** 加载基础版本 Manifest */
-	bool LoadBaseManifest(
+	static bool LoadBaseManifest(
 		const FString& ManifestPath,
 		TMap<FString, FString>& OutAssetHashes,
 		TMap<FString, int64>& OutAssetSizes);
 
 	/** 计算差异 */
-	bool ComputeDiff(
+	static bool ComputeDiff(
 		const TArray<FString>& CurrentAssets,
 		const TMap<FString, FString>& CurrentHashes,
 		const TMap<FString, FString>& BaseHashes,
@@ -60,7 +60,7 @@ private:
 		FHotUpdateDiffReport& OutReport);
 
 	/** 加载之前的 Patch Manifest（链式 Patch） */
-	bool LoadPreviousPatchManifest(
+	static bool LoadPreviousPatchManifest(
 		const FString& ManifestPath,
 		TArray<FHotUpdateContainerInfo>& OutContainers,
 		TMap<FString, FString>& OutPatchFilesHash,
@@ -68,7 +68,7 @@ private:
 		FString& OutPatchVersion);
 
 	/** 加载基础版本容器信息（全量热更新） */
-	bool LoadBaseContainers(
+	static bool LoadBaseContainers(
 		const FString& ContainerDirectory,
 		TArray<FHotUpdateContainerInfo>& OutContainers,
 		TMap<FString, FString>& OutFilesHash,
@@ -90,7 +90,7 @@ private:
 		const TArray<FString>& PatchVersionChain = TArray<FString>(),
 		const TArray<FHotUpdateContainerInfo>& BaseContainers = TArray<FHotUpdateContainerInfo>(),
 		const TMap<FString, FString>& BaseContainerFilesHash = TMap<FString, FString>(),
-		const TMap<FString, int64>& BaseContainerFilesSize = TMap<FString, int64>());
+		const TMap<FString, int64>& BaseContainerFilesSize = TMap<FString, int64>()) const;
 
 	/** 更新进度 */
 	void UpdateProgress(

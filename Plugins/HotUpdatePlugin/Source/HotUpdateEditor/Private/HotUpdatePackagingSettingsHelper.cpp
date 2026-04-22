@@ -4,9 +4,7 @@
 #include "HotUpdateEditor.h"
 #include "HotUpdateAssetFilter.h"
 #include "Settings/ProjectPackagingSettings.h"
-#include "HAL/PlatformFileManager.h"
 #include "Misc/Paths.h"
-#include "Misc/App.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 
@@ -110,7 +108,7 @@ TArray<FString> FHotUpdatePackagingSettingsHelper::CollectMapsToCook(UProjectPac
 	return Result;
 }
 
-TArray<FString> FHotUpdatePackagingSettingsHelper::CollectAlwaysCookAssets(UProjectPackagingSettings* Settings, IAssetRegistry* AssetRegistry)
+TArray<FString> FHotUpdatePackagingSettingsHelper::CollectAlwaysCookAssets(UProjectPackagingSettings* Settings, const IAssetRegistry* AssetRegistry)
 {
 	TArray<FString> Result;
 

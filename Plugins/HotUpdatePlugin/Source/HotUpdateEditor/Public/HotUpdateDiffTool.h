@@ -18,7 +18,7 @@ public:
 	 */
 	FHotUpdateDiffReport CompareManifests(
 		const FString& BaseManifestPath,
-		const FString& TargetManifestPath);
+		const FString& TargetManifestPath) const;
 
 	/**
 	 * 获取资源类型图标名称
@@ -50,7 +50,7 @@ private:
 	 * @param bIncludeHiddenFiles 是否包含隐藏文件（传递给 FindFilesRecursive 的 bFindHidden 参数）
 	 * @param OutAssets 输出资源映射
 	 */
-	void ScanDirectory(
+	static void ScanDirectory(
 		const FString& Directory,
 		bool bIncludeHiddenFiles,
 		TMap<FString, FHotUpdateAssetDiff>& OutAssets);
@@ -58,17 +58,17 @@ private:
 	/**
 	 * 解析Manifest文件
 	 */
-	bool ParseManifestFile(
+	static bool ParseManifestFile(
 		const FString& ManifestPath,
 		TMap<FString, FHotUpdateManifestEntry>& OutEntries);
 
 	/**
 	 * 从Pak文件中提取文件名到SHA1 Hash的映射
 	 */
-	TMap<FString, FString> GetPakFileHashes(const FString& PakPath);
+	static TMap<FString, FString> GetPakFileHashes(const FString& PakPath);
 
 	/**
 	 * 获取文件扩展名对应的资源类型
 	 */
-	FString GetAssetTypeFromExtension(const FString& Extension);
+	static FString GetAssetTypeFromExtension(const FString& Extension);
 };

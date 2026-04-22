@@ -1,7 +1,6 @@
 // Copyright czm. All Rights Reserved.
 
 #include "Widgets/HotUpdateBaseVersionPanel.h"
-#include "HotUpdateEditor.h"
 #include "HotUpdateEditorStyle.h"
 #include "HotUpdateNotificationHelper.h"
 #include "HotUpdateBaseVersionBuilder.h"
@@ -21,7 +20,6 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 #include "Misc/Paths.h"
-#include "Async/Async.h"
 
 #define LOCTEXT_NAMESPACE "HotUpdateBaseVersionPanel"
 

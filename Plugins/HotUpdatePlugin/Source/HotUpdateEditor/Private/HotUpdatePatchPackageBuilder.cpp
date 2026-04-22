@@ -688,8 +688,8 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	// 7. 生成 Manifest
 	UpdateProgress(TEXT("生成 Manifest"), TEXT(""), 0, 0);
 
-		// 更新 CurrentConfig 中的 BaseVersion
-			CurrentConfig.BaseVersion = ActualBaseVersion;
+	// 更新 CurrentConfig 中的 BaseVersion
+	CurrentConfig.BaseVersion = ActualBaseVersion;
 
 	FString ManifestPath = FPaths::Combine(OutputDir, TEXT("manifest.json"));
 
@@ -728,8 +728,7 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 
 	UpdateProgress(TEXT("完成"), TEXT(""), 1, 1);
 
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("更新包构建成功: %s, 变更 %d 个资源, 大小 %lld 字节"),
-		*OutputDir, ChangedAssets.Num(), Result.PatchSize);
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("更新包构建成功: %s, 变更 %d 个资源, 大小 %lld 字节"), *OutputDir, ChangedAssets.Num(), Result.PatchSize);
 
 	return Result;
 }
@@ -846,7 +845,7 @@ bool FHotUpdatePatchPackageBuilder::ValidateConfig(const FHotUpdatePatchPackageC
 	return true;
 }
 
-bool FHotUpdatePatchPackageBuilder::CollectAssets(TArray<FString>& OutAssetPaths, TMap<FString, FString>& OutAssetDiskPaths, TMap<FString, FString>& OutAssetSourcePaths, FString& OutErrorMessage)
+bool FHotUpdatePatchPackageBuilder::CollectAssets(TArray<FString>& OutAssetPaths, TMap<FString, FString>& OutAssetDiskPaths, TMap<FString, FString>& OutAssetSourcePaths, FString& OutErrorMessage) const
 {
 	TArray<FString> AllAssetPaths;
 	TArray<FString> AllNonAssetPaths;
@@ -904,7 +903,7 @@ bool FHotUpdatePatchPackageBuilder::CollectAssets(TArray<FString>& OutAssetPaths
 		}
 		else
 		{
-			FString DiskPath = FHotUpdatePackageHelper::GetAssetDiskPath(AssetPath, CookedPlatformDir);
+			const FString DiskPath = FHotUpdatePackageHelper::GetAssetDiskPath(AssetPath, CookedPlatformDir);
 			if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 			{
 				OutAssetPaths.Add(AssetPath);
@@ -1087,7 +1086,7 @@ bool FHotUpdatePatchPackageBuilder::GenerateManifest(
 	const TArray<FString>& PatchVersionChain,
 	const TArray<FHotUpdateContainerInfo>& BaseContainers,
 	const TMap<FString, FString>& BaseContainerFilesHash,
-	const TMap<FString, int64>& BaseContainerFilesSize)
+	const TMap<FString, int64>& BaseContainerFilesSize) const
 {
 	TSharedPtr<FJsonObject> RootObject = MakeShareable(new FJsonObject);
 
@@ -1102,12 +1101,7 @@ bool FHotUpdatePatchPackageBuilder::GenerateManifest(
 
 	TArray<FString> VersionParts;
 	CurrentConfig.PatchVersion.ParseIntoArray(VersionParts, TEXT("."));
-
-	int32 Major = VersionParts.Num() > 0 ? FCString::Atoi(*VersionParts[0]) : 0;
-	int32 Minor = VersionParts.Num() > 1 ? FCString::Atoi(*VersionParts[1]) : 0;
-	int32 Patch = VersionParts.Num() > 2 ? FCString::Atoi(*VersionParts[2]) : 0;
-	int32 Build = VersionParts.Num() > 3 ? FCString::Atoi(*VersionParts[3]) : 0;
-
+	
 	VersionInfo->SetStringField(TEXT("version"), CurrentConfig.PatchVersion);
 	VersionInfo->SetStringField(TEXT("platform"), HotUpdateUtils::GetPlatformString(CurrentConfig.Platform));
 	VersionInfo->SetNumberField(TEXT("timestamp"), FDateTime::Now().ToUnixTimestamp());
@@ -1339,15 +1333,14 @@ bool FHotUpdatePatchPackageBuilder::GenerateManifest(
 		if (bIsCurrentPatch)
 		{
 			// 当前变更资源：从当前 patch 加载
-			const FString* DiskPath = ChangedAssetDiskPaths.Find(AssetPath);
-			if (DiskPath)
+			if (const FString* DiskPath = ChangedAssetDiskPaths.Find(AssetPath))
 			{
-					// 优先使用源文件计算 Hash
-					FString SourcePath = FHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
-					FString HashPath = (!SourcePath.IsEmpty() && FPaths::FileExists(*SourcePath)) ? SourcePath : *DiskPath;
-					int64 FileSize = IFileManager::Get().FileSize(*HashPath);
-					FileObj->SetNumberField(TEXT("fileSize"), FileSize);
-					FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(HashPath));
+				// 优先使用源文件计算 Hash
+				FString SourcePath = FHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
+				FString HashPath = (!SourcePath.IsEmpty() && FPaths::FileExists(*SourcePath)) ? SourcePath : *DiskPath;
+				int64 FileSize = IFileManager::Get().FileSize(*HashPath);
+				FileObj->SetNumberField(TEXT("fileSize"), FileSize);
+				FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(HashPath));
 				FileObj->SetNumberField(TEXT("chunkId"), CurrentChunkId);
 				FileObj->SetStringField(TEXT("source"), TEXT("patch"));
 			}
@@ -1440,10 +1433,7 @@ void FHotUpdatePatchPackageBuilder::UpdateProgress(
 		CurrentProgress.bIsComplete = (ProcessedFiles >= TotalFiles && TotalFiles > 0);
 
 		// 计算进度百分比
-		CurrentProgress.ProgressPercent = TotalFiles > 0
-			? (float)ProcessedFiles / TotalFiles * 100.0f
-			: 0.0f;
-
+		CurrentProgress.ProgressPercent = TotalFiles > 0 ? (float)ProcessedFiles / TotalFiles * 100.0f : 0.0f;
 		// 设置阶段描述
 		CurrentProgress.StageDescription = FText::FromString(Stage);
 

@@ -7,13 +7,12 @@
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
-#include "Misc/SecureHash.h"
 #include "JsonObjectConverter.h"
 #include "IPlatformFilePak.h"
 
 FHotUpdateDiffReport FHotUpdateDiffTool::CompareManifests(
 	const FString& BaseManifestPath,
-	const FString& TargetManifestPath)
+	const FString& TargetManifestPath) const
 {
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("CompareManifests: Base='%s', Target='%s'"),
 		*BaseManifestPath, *TargetManifestPath);
@@ -356,7 +355,7 @@ TMap<FString, FString> FHotUpdateDiffTool::GetPakFileHashes(const FString& PakPa
 
 FString FHotUpdateDiffTool::GetAssetTypeFromExtension(const FString& Extension)
 {
-	FString Ext = Extension.ToLower();
+	const FString Ext = Extension.ToLower();
 
 	static TMap<FString, FString> ExtensionToType;
 	if (ExtensionToType.Num() == 0)

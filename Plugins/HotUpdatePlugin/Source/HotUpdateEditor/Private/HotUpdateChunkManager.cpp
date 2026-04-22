@@ -4,9 +4,7 @@
 #include "HotUpdateEditor.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
-#include "HAL/PlatformFileManager.h"
 #include "Misc/Paths.h"
-#include "Misc/FileHelper.h"
 
 int32 FHotUpdateChunkManager::NextAutoChunkId = 0;
 FCriticalSection FHotUpdateChunkManager::ChunkIdLock;
@@ -153,7 +151,7 @@ FHotUpdateChunkAnalysisResult FHotUpdateChunkManager::CreatePatchChunks(
 	return Result;
 }
 
-bool FHotUpdateChunkManager::BuildDependencies(TArray<FHotUpdateChunkDefinition>& Chunks, const TMap<FString, int32>& AssetToChunk, IAssetRegistry* AssetRegistry)
+bool FHotUpdateChunkManager::BuildDependencies(TArray<FHotUpdateChunkDefinition>& Chunks, const TMap<FString, int32>& AssetToChunk, const IAssetRegistry* AssetRegistry)
 {
 	if (!AssetRegistry)
 	{
@@ -245,7 +243,7 @@ bool FHotUpdateChunkManager::DivideBySizeWithConfig(
 
 	for (const FString& AssetPath : SortedAssets)
 	{
-		int64 AssetSize = GetAssetSize(AssetPath, AssetDiskPaths);
+		const int64 AssetSize = GetAssetSize(AssetPath, AssetDiskPaths);
 
 		// 检查是否需要新 Chunk
 		if (CurrentChunkSize + AssetSize > MaxChunkSize && CurrentChunk.AssetPaths.Num() > 0)
@@ -282,7 +280,7 @@ bool FHotUpdateChunkManager::CreateSingleChunk(
 	const TArray<FString>& AssetPaths,
 	const TMap<FString, FString>& AssetDiskPaths,
 	const FString& ChunkName,
-	int32 ChunkId,
+	const int32 ChunkId,
 	TArray<FHotUpdateChunkDefinition>& OutChunks,
 	TMap<FString, int32>& OutAssetToChunk)
 {

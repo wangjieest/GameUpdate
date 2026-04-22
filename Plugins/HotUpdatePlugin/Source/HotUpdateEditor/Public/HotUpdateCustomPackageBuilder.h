@@ -40,7 +40,7 @@ private:
 	static FString ResolveDiskPathToPackageName(const FString& DiskPath);
 
 	/** 确定非资产文件在 Pak 内的挂载路径 */
-	FString DetermineNonAssetPakPath(const FString& DiskPath) const;
+	static FString DetermineNonAssetPakPath(const FString& DiskPath);
 
 	/** 后台线程执行的构建逻辑（不含 AssetRegistry 调用） */
 	FHotUpdateCustomPackageResult ExecuteBuild(const FHotUpdateCustomPackageConfig& Config, const TArray<FString>& AssetPathsToCook);

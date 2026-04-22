@@ -61,7 +61,7 @@ bool FHotUpdateAssetFilter::MatchesFilterRule(
 	}
 
 	// 检查路径匹配
-	bool bPathMatches = false;
+	bool bPathMatches;
 
 	if (Rule.AssetPath.Contains(TEXT("*")))
 	{

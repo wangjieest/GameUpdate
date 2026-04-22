@@ -2,14 +2,11 @@
 
 #include "HotUpdateIoStoreBuilder.h"
 #include "HotUpdateEditor.h"
-#include "HAL/PlatformFileManager.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/App.h"
-#include "Misc/SecureHash.h"
 #include "Misc/PackageName.h"
-#include "GenericPlatform/GenericPlatformProcess.h"
 
 FHotUpdateIoStoreBuilder::FHotUpdateIoStoreBuilder()
 	: bIsBuilding(false)
@@ -698,7 +695,7 @@ FString FHotUpdateIoStoreBuilder::GenerateCryptoKeyFile(
 
 	FString CryptoPath = FPaths::Combine(TempDir, TEXT("Crypto.json"));
 
-	FString CryptoContent = FString::Printf(TEXT(
+	const FString CryptoContent = FString::Printf(TEXT(
 		"{\n"
 		"  \"EncryptionKey\": {\n"
 		"    \"Name\": \"%s\",\n"

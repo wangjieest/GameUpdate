@@ -4,38 +4,30 @@
 
 #include "CoreMinimal.h"
 #include "HotUpdateEditorTypes.h"
-#include "HotUpdateCustomPackageBuilder.generated.h"
 
 /**
  * 自定义打包构建器
  * 独立于热更新打包流程，只 Cook 指定资源，不做版本差异对比
+ * 继承 TSharedFromThis 以支持异步任务中的弱引用安全访问
  */
-UCLASS(BlueprintType)
-class HOTUPDATEEDITOR_API UHotUpdateCustomPackageBuilder : public UObject
+class HOTUPDATEEDITOR_API FHotUpdateCustomPackageBuilder : public TSharedFromThis<FHotUpdateCustomPackageBuilder>
 {
-	GENERATED_BODY()
-
 public:
-	UHotUpdateCustomPackageBuilder();
+	FHotUpdateCustomPackageBuilder();
 
 	/** 同步构建自定义包 */
-	UFUNCTION(BlueprintCallable, Category = "HotUpdate|CustomPackage")
 	FHotUpdateCustomPackageResult BuildCustomPackage(const FHotUpdateCustomPackageConfig& Config);
 
 	/** 异步构建自定义包 */
-	UFUNCTION(BlueprintCallable, Category = "HotUpdate|CustomPackage")
 	void BuildCustomPackageAsync(const FHotUpdateCustomPackageConfig& Config);
 
 	/** 取消构建 */
-	UFUNCTION(BlueprintCallable, Category = "HotUpdate|CustomPackage")
 	void CancelBuild();
 
 	/** 是否正在构建 */
-	UFUNCTION(BlueprintPure, Category = "HotUpdate|CustomPackage")
 	bool IsBuilding() const { return bIsBuilding; }
 
 	/** 获取当前进度 */
-	UFUNCTION(BlueprintPure, Category = "HotUpdate|CustomPackage")
 	FHotUpdatePackageProgress GetCurrentProgress() const;
 
 	/** 进度委托 */

@@ -61,8 +61,7 @@ void SHotUpdatePackagingPanel::Construct(const FArguments& InArgs)
 	RefreshVersionSelectOptions();
 
 	// 创建更新包构建器
-	PatchPackageBuilder = NewObject<UHotUpdatePatchPackageBuilder>();
-	PatchPackageBuilder->AddToRoot();
+	PatchPackageBuilder = MakeShareable(new FHotUpdatePatchPackageBuilder());
 	PatchPackageBuilder->OnProgress.AddSP(this, &SHotUpdatePackagingPanel::OnPackagingProgress);
 	PatchPackageBuilder->OnComplete.AddSP(this, &SHotUpdatePackagingPanel::OnPackagingComplete);
 
@@ -90,12 +89,11 @@ void SHotUpdatePackagingPanel::Construct(const FArguments& InArgs)
 
 SHotUpdatePackagingPanel::~SHotUpdatePackagingPanel()
 {
-	if (PatchPackageBuilder)
+	if (PatchPackageBuilder.IsValid())
 	{
 		PatchPackageBuilder->OnProgress.RemoveAll(this);
 		PatchPackageBuilder->OnComplete.RemoveAll(this);
-		PatchPackageBuilder->RemoveFromRoot();
-		PatchPackageBuilder = nullptr;
+		PatchPackageBuilder.Reset();
 	}
 }
 

@@ -19,13 +19,13 @@
 #include "JsonObjectConverter.h"
 #include "Interfaces/IPluginManager.h"
 
-UHotUpdatePatchPackageBuilder::UHotUpdatePatchPackageBuilder()
+FHotUpdatePatchPackageBuilder::FHotUpdatePatchPackageBuilder()
 	: bIsBuilding(false)
 	, bIsCancelled(false)
 {
 }
 
-FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(const FHotUpdatePatchPackageConfig& Config)
+FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(const FHotUpdatePatchPackageConfig& Config)
 {
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("BuildPatchPackage (同步) 开始调用"));
 
@@ -738,7 +738,7 @@ FHotUpdatePatchPackageResult UHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	return Result;
 }
 
-void UHotUpdatePatchPackageBuilder::BuildPatchPackageAsync(const FHotUpdatePatchPackageConfig& Config)
+void FHotUpdatePatchPackageBuilder::BuildPatchPackageAsync(const FHotUpdatePatchPackageConfig& Config)
 {
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("BuildPatchPackageAsync 开始调用"));
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("  bIsBuilding: %s"), bIsBuilding ? TEXT("true") : TEXT("false"));
@@ -794,30 +794,30 @@ void UHotUpdatePatchPackageBuilder::BuildPatchPackageAsync(const FHotUpdatePatch
 
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("预收集完成（含依赖），共 %d 个资源, %d 个非资源文件"), CurrentConfig.PreCollectedAssetPaths.Num(), CurrentConfig.PreCollectedNonAssetPaths.Num());
 
-	TWeakObjectPtr<UHotUpdatePatchPackageBuilder> WeakThis(this);
+	TWeakPtr<FHotUpdatePatchPackageBuilder> WeakBuilder(AsShared());
 
-	BuildTask = Async(EAsyncExecution::Thread, [WeakThis]()
-	{
-		UHotUpdatePatchPackageBuilder* Builder = WeakThis.Get();
-		if (!Builder)
+		BuildTask = Async(EAsyncExecution::Thread, [WeakBuilder]()
 		{
-			return;
-		}
-
-		FHotUpdatePatchPackageResult Result = Builder->BuildPatchPackage(Builder->CurrentConfig);
-
-		AsyncTask(ENamedThreads::GameThread, [WeakThis, Result]()
-		{
-			UHotUpdatePatchPackageBuilder* PinnedBuilder = WeakThis.Get();
-			if (IsValid(PinnedBuilder))
+			TSharedPtr<FHotUpdatePatchPackageBuilder> Builder = WeakBuilder.Pin();
+			if (!Builder.IsValid())
 			{
-				PinnedBuilder->OnComplete.Broadcast(Result);
+				return;
 			}
+
+			FHotUpdatePatchPackageResult Result = Builder->BuildPatchPackage(Builder->CurrentConfig);
+
+			AsyncTask(ENamedThreads::GameThread, [WeakBuilder, Result]()
+			{
+				TSharedPtr<FHotUpdatePatchPackageBuilder> PinnedBuilder = WeakBuilder.Pin();
+				if (PinnedBuilder.IsValid())
+				{
+					PinnedBuilder->OnComplete.Broadcast(Result);
+				}
+			});
 		});
-	});
 }
 
-FHotUpdateDiffReport UHotUpdatePatchPackageBuilder::PreviewDiff(const FHotUpdatePatchPackageConfig& Config)
+FHotUpdateDiffReport FHotUpdatePatchPackageBuilder::PreviewDiff(const FHotUpdatePatchPackageConfig& Config)
 {
 	CurrentConfig = Config;
 	FHotUpdateDiffReport Report;
@@ -866,18 +866,18 @@ FHotUpdateDiffReport UHotUpdatePatchPackageBuilder::PreviewDiff(const FHotUpdate
 	return Report;
 }
 
-void UHotUpdatePatchPackageBuilder::CancelBuild()
+void FHotUpdatePatchPackageBuilder::CancelBuild()
 {
 	bIsCancelled = true;
 }
 
-FHotUpdatePackageProgress UHotUpdatePatchPackageBuilder::GetCurrentProgress() const
+FHotUpdatePackageProgress FHotUpdatePatchPackageBuilder::GetCurrentProgress() const
 {
 	FScopeLock Lock(&ProgressCriticalSection);
 	return CurrentProgress;
 }
 
-bool UHotUpdatePatchPackageBuilder::ValidateConfig(const FHotUpdatePatchPackageConfig& Config, FString& OutErrorMessage)
+bool FHotUpdatePatchPackageBuilder::ValidateConfig(const FHotUpdatePatchPackageConfig& Config, FString& OutErrorMessage)
 {
 	if (Config.PatchVersion.IsEmpty())
 	{
@@ -907,7 +907,7 @@ bool UHotUpdatePatchPackageBuilder::ValidateConfig(const FHotUpdatePatchPackageC
 	return true;
 }
 
-bool UHotUpdatePatchPackageBuilder::CollectAssets(TArray<FString>& OutAssetPaths, TMap<FString, FString>& OutAssetDiskPaths, TMap<FString, FString>& OutAssetSourcePaths, FString& OutErrorMessage)
+bool FHotUpdatePatchPackageBuilder::CollectAssets(TArray<FString>& OutAssetPaths, TMap<FString, FString>& OutAssetDiskPaths, TMap<FString, FString>& OutAssetSourcePaths, FString& OutErrorMessage)
 {
 	TArray<FString> AllAssetPaths;
 	TArray<FString> AllNonAssetPaths;
@@ -988,7 +988,7 @@ bool UHotUpdatePatchPackageBuilder::CollectAssets(TArray<FString>& OutAssetPaths
 	return true;
 }
 
-bool UHotUpdatePatchPackageBuilder::LoadBaseManifest(
+bool FHotUpdatePatchPackageBuilder::LoadBaseManifest(
 	const FString& ManifestPath,
 	TMap<FString, FString>& OutAssetHashes,
 	TMap<FString, int64>& OutAssetSizes)
@@ -1067,7 +1067,7 @@ bool UHotUpdatePatchPackageBuilder::LoadBaseManifest(
 	return OutAssetHashes.Num() > 0;
 }
 
-bool UHotUpdatePatchPackageBuilder::ComputeDiff(
+bool FHotUpdatePatchPackageBuilder::ComputeDiff(
 	const TArray<FString>& CurrentAssets,
 	const TMap<FString, FString>& CurrentHashes,
 	const TMap<FString, FString>& BaseHashes,
@@ -1133,7 +1133,7 @@ bool UHotUpdatePatchPackageBuilder::ComputeDiff(
 	return true;
 }
 
-bool UHotUpdatePatchPackageBuilder::GenerateManifest(
+bool FHotUpdatePatchPackageBuilder::GenerateManifest(
 	const FString& ManifestPath,
 	const FString& PatchUtocPath,
 	const FString& PatchUcasPath,
@@ -1485,7 +1485,7 @@ bool UHotUpdatePatchPackageBuilder::GenerateManifest(
 	return FFileHelper::SaveStringToFile(FileManifestString, *FileManifestPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 }
 
-void UHotUpdatePatchPackageBuilder::UpdateProgress(
+void FHotUpdatePatchPackageBuilder::UpdateProgress(
 	const FString& Stage,
 	const FString& CurrentFile,
 	int32 ProcessedFiles,
@@ -1512,18 +1512,18 @@ void UHotUpdatePatchPackageBuilder::UpdateProgress(
 	}
 
 	// 在游戏线程中安全地广播委托
-	TWeakObjectPtr<UHotUpdatePatchPackageBuilder> WeakThis(this);
-	AsyncTask(ENamedThreads::GameThread, [WeakThis, ProgressCopy]()
+	TWeakPtr<FHotUpdatePatchPackageBuilder> WeakBuilder(AsShared());
+	AsyncTask(ENamedThreads::GameThread, [WeakBuilder, ProgressCopy]()
 	{
-		UHotUpdatePatchPackageBuilder* PinnedBuilder = WeakThis.Get();
-		if (IsValid(PinnedBuilder))
+		TSharedPtr<FHotUpdatePatchPackageBuilder> PinnedBuilder = WeakBuilder.Pin();
+		if (PinnedBuilder.IsValid())
 		{
 			PinnedBuilder->OnProgress.Broadcast(ProgressCopy);
 		}
 	});
 }
 
-bool UHotUpdatePatchPackageBuilder::LoadPreviousPatchManifest(
+bool FHotUpdatePatchPackageBuilder::LoadPreviousPatchManifest(
 	const FString& ManifestPath,
 	TArray<FHotUpdateContainerInfo>& OutContainers,
 	TMap<FString, FString>& OutPatchFilesHash,
@@ -1660,7 +1660,7 @@ bool UHotUpdatePatchPackageBuilder::LoadPreviousPatchManifest(
 	return OutContainers.Num() > 0;
 }
 
-bool UHotUpdatePatchPackageBuilder::LoadBaseContainers(
+bool FHotUpdatePatchPackageBuilder::LoadBaseContainers(
 	const FString& ContainerDirectory,
 	TArray<FHotUpdateContainerInfo>& OutContainers,
 	TMap<FString, FString>& OutFilesHash,

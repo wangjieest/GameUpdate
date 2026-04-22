@@ -10,42 +10,33 @@
 #include "HotUpdatePackageHelper.h"
 #include "HAL/CriticalSection.h"
 #include <atomic>
-#include "HotUpdatePatchPackageBuilder.generated.h"
 
 /**
  * 热更新打包构建器
  * 基于基础包生成差异更新包
+ * 继承 TSharedFromThis 以支持异步任务中的弱引用安全访问
  */
-UCLASS(BlueprintType)
-class HOTUPDATEEDITOR_API UHotUpdatePatchPackageBuilder : public UObject
+class HOTUPDATEEDITOR_API FHotUpdatePatchPackageBuilder : public TSharedFromThis<FHotUpdatePatchPackageBuilder>
 {
-	GENERATED_BODY()
-
 public:
-	UHotUpdatePatchPackageBuilder();
+	FHotUpdatePatchPackageBuilder();
 
 	/** 构建更新包 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|PatchPackage")
 	FHotUpdatePatchPackageResult BuildPatchPackage(const FHotUpdatePatchPackageConfig& Config);
 
 	/** 异步构建更新包 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|PatchPackage")
 	void BuildPatchPackageAsync(const FHotUpdatePatchPackageConfig& Config);
 
 	/** 预览差异 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|PatchPackage")
 	FHotUpdateDiffReport PreviewDiff(const FHotUpdatePatchPackageConfig& Config);
 
 	/** 取消构建 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|PatchPackage")
 	void CancelBuild();
 
 	/** 是否正在构建 */
-	UFUNCTION(BlueprintPure, Category = "Hot Update|PatchPackage")
 	bool IsBuilding() const { return bIsBuilding; }
 
 	/** 获取当前进度 */
-	UFUNCTION(BlueprintPure, Category = "Hot Update|PatchPackage")
 	FHotUpdatePackageProgress GetCurrentProgress() const;
 
 	/** 验证配置 */

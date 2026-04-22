@@ -398,12 +398,12 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 		}
 	}
 
-	// 创建构建器
-	UHotUpdatePatchPackageBuilder* Builder = NewObject<UHotUpdatePatchPackageBuilder>();
+	// 创建构建器（栈对象）
+	FHotUpdatePatchPackageBuilder Builder;
 
 	// 验证配置
 	FString ErrorMessage;
-	if (!Builder->ValidateConfig(Config, ErrorMessage))
+	if (!Builder.ValidateConfig(Config, ErrorMessage))
 	{
 		UE_LOG(LogHotUpdateCommandlet, Error, TEXT("配置验证失败: %s"), *ErrorMessage);
 		return 1;
@@ -411,7 +411,7 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 
 	// 执行构建
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("开始构建热更包..."));
-	FHotUpdatePatchPackageResult Result = Builder->BuildPatchPackage(Config);
+	FHotUpdatePatchPackageResult Result = Builder.BuildPatchPackage(Config);
 
 	if (Result.bSuccess)
 	{

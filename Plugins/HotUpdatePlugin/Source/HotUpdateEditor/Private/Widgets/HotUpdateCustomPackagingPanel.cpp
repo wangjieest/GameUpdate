@@ -47,8 +47,7 @@ void SHotUpdateCustomPackagingPanel::Construct(const FArguments& InArgs)
 	SelectedAndroidTextureFormat = AndroidTextureFormatOptions[0];
 
 	// 创建更新包构建器
-	CustomPackageBuilder = NewObject<UHotUpdateCustomPackageBuilder>();
-	CustomPackageBuilder->AddToRoot();
+	CustomPackageBuilder = MakeShareable(new FHotUpdateCustomPackageBuilder());
 	CustomPackageBuilder->OnProgress.AddSP(this, &SHotUpdateCustomPackagingPanel::OnPackagingProgress);
 	CustomPackageBuilder->OnComplete.AddSP(this, &SHotUpdateCustomPackagingPanel::OnPackagingComplete);
 
@@ -74,12 +73,11 @@ void SHotUpdateCustomPackagingPanel::Construct(const FArguments& InArgs)
 
 SHotUpdateCustomPackagingPanel::~SHotUpdateCustomPackagingPanel()
 {
-	if (CustomPackageBuilder)
+	if (CustomPackageBuilder.IsValid())
 	{
 		CustomPackageBuilder->OnProgress.RemoveAll(this);
 		CustomPackageBuilder->OnComplete.RemoveAll(this);
-		CustomPackageBuilder->RemoveFromRoot();
-		CustomPackageBuilder = nullptr;
+		CustomPackageBuilder.Reset();
 	}
 }
 

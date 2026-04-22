@@ -222,6 +222,9 @@ void FHotUpdateAssetFilter::GetDependenciesRecursive(
 	}
 	Visited.Add(AssetPath);
 
+	// 添加当前资产到结果
+	OutDependencies.Add(AssetPath);
+
 	// 根据策略获取依赖
 	TArray<FName> Dependencies;
 	UE::AssetRegistry::EDependencyCategory Category = UE::AssetRegistry::EDependencyCategory::Package;

@@ -90,19 +90,19 @@ struct FHotUpdateResolvedAssetInfo
 	}
 };
 
-UHotUpdateBaseVersionBuilder::UHotUpdateBaseVersionBuilder()
+FHotUpdateBaseVersionBuilder::FHotUpdateBaseVersionBuilder()
 	: bIsBuilding(false)
 	, bIsCancelled(false)
 {
 }
 
-FString UHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory()
+FString FHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory()
 {
 	return FPaths::ProjectSavedDir() / TEXT("BaseVersionBuilds");
 }
 
 
-void UHotUpdateBaseVersionBuilder::BuildBaseVersion(const FHotUpdateBaseVersionBuildConfig& Config)
+void FHotUpdateBaseVersionBuilder::BuildBaseVersion(const FHotUpdateBaseVersionBuildConfig& Config)
 {
 	CurrentConfig = Config;
 	
@@ -242,21 +242,21 @@ void UHotUpdateBaseVersionBuilder::BuildBaseVersion(const FHotUpdateBaseVersionB
 	else
 	{
 		// 在后台线程执行构建（编辑器模式）
-		BuildTask = Async(EAsyncExecution::Thread, [WeakThis = TWeakObjectPtr<UHotUpdateBaseVersionBuilder>(this)]()
+		BuildTask = Async(EAsyncExecution::Thread, [WeakThis = TWeakPtr<FHotUpdateBaseVersionBuilder>(AsShared())]()
 		{
-			if (!WeakThis.IsValid()) return;
-			auto* Self = WeakThis.Get();
-			Self->ExecuteBuildInternal(false);
+			TSharedPtr<FHotUpdateBaseVersionBuilder> StrongThis = WeakThis.Pin();
+			if (!StrongThis.IsValid()) return;
+			StrongThis->ExecuteBuildInternal(false);
 		});
 	}
 }
 
-void UHotUpdateBaseVersionBuilder::CancelBuild()
+void FHotUpdateBaseVersionBuilder::CancelBuild()
 {
 	bIsCancelled = true;
 }
 
-void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
+void FHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 {
 	// 清空上次构建的缓存
 	CachedChunkMapping.Empty();
@@ -318,10 +318,11 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 		}
 		else
 		{
-			AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakObjectPtr<UHotUpdateBaseVersionBuilder>(this), Result]()
+			AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakPtr<FHotUpdateBaseVersionBuilder>(AsShared()), Result]()
 			{
-				if (!WeakThis.IsValid()) return;
-				WeakThis.Get()->OnBuildComplete.Broadcast(Result);
+				TSharedPtr<FHotUpdateBaseVersionBuilder> StrongThis = WeakThis.Pin();
+			if (!StrongThis.IsValid()) return;
+			StrongThis->OnBuildComplete.Broadcast(Result);
 			});
 		}
 		return;
@@ -338,10 +339,11 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 		}
 		else
 		{
-			AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakObjectPtr<UHotUpdateBaseVersionBuilder>(this), Result]()
+			AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakPtr<FHotUpdateBaseVersionBuilder>(AsShared()), Result]()
 			{
-				if (!WeakThis.IsValid()) return;
-				WeakThis.Get()->OnBuildComplete.Broadcast(Result);
+				TSharedPtr<FHotUpdateBaseVersionBuilder> StrongThis = WeakThis.Pin();
+			if (!StrongThis.IsValid()) return;
+			StrongThis->OnBuildComplete.Broadcast(Result);
 			});
 		}
 		return;
@@ -361,10 +363,11 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 		}
 		else
 		{
-			AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakObjectPtr<UHotUpdateBaseVersionBuilder>(this), Result]()
+			AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakPtr<FHotUpdateBaseVersionBuilder>(AsShared()), Result]()
 			{
-				if (!WeakThis.IsValid()) return;
-				WeakThis.Get()->OnBuildComplete.Broadcast(Result);
+				TSharedPtr<FHotUpdateBaseVersionBuilder> StrongThis = WeakThis.Pin();
+			if (!StrongThis.IsValid()) return;
+			StrongThis->OnBuildComplete.Broadcast(Result);
 			});
 		}
 		return;
@@ -383,14 +386,15 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 	else
 	{
 		TPromise<bool> SaveResultPromise;
-		AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakObjectPtr<UHotUpdateBaseVersionBuilder>(this), &SaveResultPromise]()
+		AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakPtr<FHotUpdateBaseVersionBuilder>(AsShared()), &SaveResultPromise]()
 		{
-			if (!WeakThis.IsValid())
+			TSharedPtr<FHotUpdateBaseVersionBuilder> StrongThis = WeakThis.Pin();
+			if (!StrongThis.IsValid())
 			{
 				SaveResultPromise.SetValue(false);
 				return;
 			}
-			bool bSuccess = WeakThis.Get()->SaveResourceHashesInGameThread();
+			bool bSuccess = StrongThis->SaveResourceHashesInGameThread();
 			SaveResultPromise.SetValue(bSuccess);
 		});
 		TFuture<bool> SaveFuture = SaveResultPromise.GetFuture();
@@ -419,15 +423,16 @@ void UHotUpdateBaseVersionBuilder::ExecuteBuildInternal(bool bSynchronous)
 	}
 	else
 	{
-		AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakObjectPtr<UHotUpdateBaseVersionBuilder>(this), Result]()
+		AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakPtr<FHotUpdateBaseVersionBuilder>(AsShared()), Result]()
 		{
-			if (!WeakThis.IsValid()) return;
-			WeakThis.Get()->OnBuildComplete.Broadcast(Result);
+			TSharedPtr<FHotUpdateBaseVersionBuilder> StrongThis = WeakThis.Pin();
+			if (!StrongThis.IsValid()) return;
+			StrongThis->OnBuildComplete.Broadcast(Result);
 		});
 	}
 }
 
-FString UHotUpdateBaseVersionBuilder::GenerateUATCommand()
+FString FHotUpdateBaseVersionBuilder::GenerateUATCommand()
 {
 	// 获取引擎目录
 	FString EngineDir = FPaths::EngineDir();
@@ -582,7 +587,7 @@ FString UHotUpdateBaseVersionBuilder::GenerateUATCommand()
 }
 
 
-void UHotUpdateBaseVersionBuilder::WriteMinimalPackageConfig()
+void FHotUpdateBaseVersionBuilder::WriteMinimalPackageConfig()
 {
 	FString ConfigFile = FPaths::ProjectIntermediateDir() / TEXT("MinimalPackageConfig.json");
 
@@ -626,7 +631,7 @@ void UHotUpdateBaseVersionBuilder::WriteMinimalPackageConfig()
 	}
 }
 
-void UHotUpdateBaseVersionBuilder::PreComputeChunkMapping()
+void FHotUpdateBaseVersionBuilder::PreComputeChunkMapping()
 {
 	if (!CurrentConfig.MinimalPackageConfig.bEnableMinimalPackage)
 		return;
@@ -708,7 +713,7 @@ void UHotUpdateBaseVersionBuilder::PreComputeChunkMapping()
 	}
 }
 
-bool UHotUpdateBaseVersionBuilder::ExecuteUATPackage(const FString& UATCommand, FString& OutError)
+bool FHotUpdateBaseVersionBuilder::ExecuteUATPackage(const FString& UATCommand, FString& OutError)
 {
 	// 解析命令行
 	FString ExecutablePath;
@@ -795,7 +800,7 @@ bool UHotUpdateBaseVersionBuilder::ExecuteUATPackage(const FString& UATCommand, 
 	return true;
 }
 
-bool UHotUpdateBaseVersionBuilder::CheckBuildOutput(const FString& OutputDir, FString& OutExecutablePath)
+bool FHotUpdateBaseVersionBuilder::CheckBuildOutput(const FString& OutputDir, FString& OutExecutablePath)
 {
 	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
 
@@ -851,7 +856,7 @@ bool UHotUpdateBaseVersionBuilder::CheckBuildOutput(const FString& OutputDir, FS
 	return false;
 }
 
-bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
+bool FHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 {
 	// 1. 解析平台输出目录
 	FString PlatformDir = ResolvePlatformOutputDir();
@@ -921,7 +926,7 @@ bool UHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 	return true;
 }
 
-FString UHotUpdateBaseVersionBuilder::ResolvePlatformOutputDir() const
+FString FHotUpdateBaseVersionBuilder::ResolvePlatformOutputDir() const
 {
 	// 从打包输出目录获取容器文件列表
 	FString OutputDir = CurrentConfig.OutputDirectory;
@@ -944,7 +949,7 @@ FString UHotUpdateBaseVersionBuilder::ResolvePlatformOutputDir() const
 	return PlatformDir;
 }
 
-TArray<FHotUpdateContainerInfo> UHotUpdateBaseVersionBuilder::CollectContainerInfos(
+TArray<FHotUpdateContainerInfo> FHotUpdateBaseVersionBuilder::CollectContainerInfos(
 	const FString& PlatformDir, const FString& VersionDir) const
 {
 	TArray<FHotUpdateContainerInfo> ContainerInfos;
@@ -1041,7 +1046,7 @@ TArray<FHotUpdateContainerInfo> UHotUpdateBaseVersionBuilder::CollectContainerIn
 	return ContainerInfos;
 }
 
-bool UHotUpdateBaseVersionBuilder::BuildManifestJson(
+bool FHotUpdateBaseVersionBuilder::BuildManifestJson(
 	const FString& VersionDir,
 	const TArray<FHotUpdateContainerInfo>& ContainerInfos,
 	TSharedPtr<FJsonObject>& OutVersionObject,
@@ -1108,7 +1113,7 @@ bool UHotUpdateBaseVersionBuilder::BuildManifestJson(
 	return true;
 }
 
-TArray<FHotUpdateResolvedAssetInfo> UHotUpdateBaseVersionBuilder::ResolveAssetInfo(
+TArray<FHotUpdateResolvedAssetInfo> FHotUpdateBaseVersionBuilder::ResolveAssetInfo(
 	const TArray<FString>& AssetPaths, const FString& CookedPlatformDir) const
 {
 	TArray<FHotUpdateResolvedAssetInfo> Result;
@@ -1136,7 +1141,7 @@ TArray<FHotUpdateResolvedAssetInfo> UHotUpdateBaseVersionBuilder::ResolveAssetIn
 	return Result;
 }
 
-bool UHotUpdateBaseVersionBuilder::BuildFileManifestJson(
+bool FHotUpdateBaseVersionBuilder::BuildFileManifestJson(
 	const FString& VersionDir,
 	const TSharedPtr<FJsonObject>& VersionObject,
 	const TArray<TSharedPtr<FJsonValue>>& ChunksArray,
@@ -1215,7 +1220,7 @@ bool UHotUpdateBaseVersionBuilder::BuildFileManifestJson(
 	return true;
 }
 
-void UHotUpdateBaseVersionBuilder::UpdateProgress(const FString& Stage, float Percent, const FString& Message)
+void FHotUpdateBaseVersionBuilder::UpdateProgress(const FString& Stage, float Percent, const FString& Message)
 {
 	FHotUpdateBaseVersionBuildProgress Progress;
 	Progress.CurrentStage = Stage;
@@ -1223,10 +1228,11 @@ void UHotUpdateBaseVersionBuilder::UpdateProgress(const FString& Stage, float Pe
 	Progress.StatusMessage = Message;
 
 	// 在游戏线程广播
-	AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakObjectPtr<UHotUpdateBaseVersionBuilder>(this), Progress]()
+	AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakPtr<FHotUpdateBaseVersionBuilder>(AsShared()), Progress]()
 	{
-		if (!WeakThis.IsValid()) return;
-		WeakThis.Get()->OnBuildProgress.Broadcast(Progress);
+		TSharedPtr<FHotUpdateBaseVersionBuilder> StrongThis = WeakThis.Pin();
+		if (!StrongThis.IsValid()) return;
+		StrongThis->OnBuildProgress.Broadcast(Progress);
 	});
 }
 

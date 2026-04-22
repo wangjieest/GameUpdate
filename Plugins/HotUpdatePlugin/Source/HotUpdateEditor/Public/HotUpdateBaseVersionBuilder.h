@@ -143,32 +143,27 @@ struct FHotUpdateResolvedAssetInfo;
 /**
  * 基础版本构建器
  * 负责完整的项目打包（exe/apk）并保存为基础版本
+ * 继承 TSharedFromThis 以支持异步任务中的弱引用安全访问
  */
-UCLASS(BlueprintType)
-class HOTUPDATEEDITOR_API UHotUpdateBaseVersionBuilder : public UObject
+class HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuilder : public TSharedFromThis<FHotUpdateBaseVersionBuilder>
 {
-	GENERATED_BODY()
-
 public:
-	UHotUpdateBaseVersionBuilder();
+	FHotUpdateBaseVersionBuilder();
 
 	/**
 	 * 开始构建基础版本
 	 * @param Config 构建配置
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|BaseVersion")
 	void BuildBaseVersion(const FHotUpdateBaseVersionBuildConfig& Config);
 
 	/**
 	 * 取消构建
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Hot Update|BaseVersion")
 	void CancelBuild();
 
 	/**
 	 * 是否正在构建
 	 */
-	UFUNCTION(BlueprintPure, Category = "Hot Update|BaseVersion")
 	bool IsBuilding() const { return bIsBuilding; }
 
 	/**

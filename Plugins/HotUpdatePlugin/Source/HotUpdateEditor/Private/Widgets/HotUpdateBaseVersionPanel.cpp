@@ -62,13 +62,12 @@ void SHotUpdateBaseVersionPanel::Construct(const FArguments& InArgs)
 	SelectedPatchChunkStrategy = PatchChunkStrategyOptions[0];
 
 	// 创建构建器
-	Builder = NewObject<UHotUpdateBaseVersionBuilder>();
-	Builder->AddToRoot();
+	Builder = MakeShareable(new FHotUpdateBaseVersionBuilder());
 	Builder->OnBuildProgress.AddSP(this, &SHotUpdateBaseVersionPanel::OnBuildProgress);
 	Builder->OnBuildComplete.AddSP(this, &SHotUpdateBaseVersionPanel::OnBuildComplete);
 
 	// 默认输出目录
-	BuildConfig.OutputDirectory = UHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory();
+	BuildConfig.OutputDirectory = FHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory();
 
 	ChildSlot
 	[
@@ -139,12 +138,11 @@ void SHotUpdateBaseVersionPanel::Construct(const FArguments& InArgs)
 
 SHotUpdateBaseVersionPanel::~SHotUpdateBaseVersionPanel()
 {
-	if (Builder)
+	if (Builder.IsValid())
 	{
 		Builder->OnBuildProgress.RemoveAll(this);
 		Builder->OnBuildComplete.RemoveAll(this);
-		Builder->RemoveFromRoot();
-		Builder = nullptr;
+		Builder.Reset();
 	}
 }
 

@@ -245,7 +245,7 @@ int32 UHotUpdateCommandlet::ExecuteBasePackage()
 	else
 	{
 		// 默认输出目录
-		Config.OutputDirectory = UHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory();
+		Config.OutputDirectory = FHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory();
 	}
 
 	// 配置最小包模式
@@ -276,11 +276,11 @@ int32 UHotUpdateCommandlet::ExecuteBasePackage()
 		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("启用最小包模式"));
 	}
 
-	// 创建构建器
-	UHotUpdateBaseVersionBuilder* Builder = NewObject<UHotUpdateBaseVersionBuilder>();
+	// 创建构建器（栈对象，同步模式下生命周期由函数作用域管理）
+	FHotUpdateBaseVersionBuilder Builder;
 
 	// 绑定进度回调
-	Builder->OnBuildProgress.AddLambda([](const FHotUpdateBaseVersionBuildProgress& Progress)
+	Builder.OnBuildProgress.AddLambda([](const FHotUpdateBaseVersionBuildProgress& Progress)
 	{
 		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("[%s] %.0f%% - %s"),
 			*Progress.CurrentStage, Progress.ProgressPercent * 100, *Progress.StatusMessage);
@@ -288,7 +288,7 @@ int32 UHotUpdateCommandlet::ExecuteBasePackage()
 
 	// 捕获构建结果
 	bool bBuildSuccess = false;
-	Builder->OnBuildComplete.AddLambda([&bBuildSuccess](const FHotUpdateBaseVersionBuildResult& Result)
+	Builder.OnBuildComplete.AddLambda([&bBuildSuccess](const FHotUpdateBaseVersionBuildResult& Result)
 	{
 		bBuildSuccess = Result.bSuccess;
 		if (Result.bSuccess)
@@ -307,10 +307,10 @@ int32 UHotUpdateCommandlet::ExecuteBasePackage()
 	});
 
 	// 开始构建
-	Builder->BuildBaseVersion(Config);
+	Builder.BuildBaseVersion(Config);
 
 	// 等待构建完成
-	while (Builder->IsBuilding())
+	while (Builder.IsBuilding())
 	{
 		FPlatformProcess::Sleep(0.5f);
 	}
@@ -341,7 +341,7 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 		if (!FPaths::FileExists(*ManifestPath))
 		{
 			// 回退到 BaseVersionBuilds 目录查找
-			FString BaseVersionDir = FPaths::Combine(UHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory(), BaseVersion);
+			FString BaseVersionDir = FPaths::Combine(FHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory(), BaseVersion);
 			ManifestPath = FPaths::Combine(BaseVersionDir, PlatformName, TEXT("manifest.json"));
 		}
 
@@ -383,7 +383,7 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 		// 如果未指定基础容器目录，尝试自动查找
 		if (BaseContainerDir.IsEmpty())
 		{
-			FString BaseVersionBuildDir = FPaths::Combine(UHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory(), BaseVersion, PlatformName);
+			FString BaseVersionBuildDir = FPaths::Combine(FHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory(), BaseVersion, PlatformName);
 			if (FPaths::DirectoryExists(*BaseVersionBuildDir))
 			{
 				BaseContainerDir = BaseVersionBuildDir;

@@ -47,7 +47,7 @@ FHotUpdatePackagingSettingsResult FHotUpdatePackagingSettingsHelper::ParsePackag
 	Result.AssetPaths.Append(AlwaysCookAssets);
 
 	// 3. 收集 DirectoriesToAlwaysStageAsUFS 中的非资产文件
-	CollectStagedFilesAsUFS(Result.AssetPaths);
+	CollectStagedFilesAsUFS(Result.StagedFiles);
 
 	// 4. 过滤 NeverCook 目录
 	int32 RemovedCount = 0;
@@ -259,27 +259,26 @@ public:
 	}
 };
 
-void FHotUpdatePackagingSettingsHelper::CollectStagedFilesAsUFS(TArray<FString>& OutPaths)
+void FHotUpdatePackagingSettingsHelper::CollectStagedFilesAsUFS(TArray<FHotUpdateStagedFileInfo>& OutStagedFiles)
 {
 	UProjectPackagingSettings* Settings = GetPackagingSettings();
 	if (!Settings)
 	{
 		return;
 	}
-	const FString ContentDir = FPaths::ProjectContentDir();
 	for (const FDirectoryPath& Dir : Settings->DirectoriesToAlwaysStageAsUFS)
 	{
-		CollectStagedFilesFromDirectory(Dir, ContentDir, OutPaths);
+		CollectStagedFilesFromDirectory(Dir, OutStagedFiles);
 	}
 }
 
-void FHotUpdatePackagingSettingsHelper::CollectStagedFilesFromDirectory(const FDirectoryPath& DirPath, const FString& ContentDir,
-	TArray<FString>& OutPaths)
+void FHotUpdatePackagingSettingsHelper::CollectStagedFilesFromDirectory(const FDirectoryPath& DirPath, TArray<FHotUpdateStagedFileInfo>& OutStagedFiles)
 {
 	if (DirPath.Path.IsEmpty())
 	{
 		return;
 	}
+	const FString ContentDir = FPaths::ProjectContentDir();
 
 	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
 	FString FullDir = FPaths::Combine(ContentDir, DirPath.Path);
@@ -296,10 +295,16 @@ void FHotUpdatePackagingSettingsHelper::CollectStagedFilesFromDirectory(const FD
 
 	for (const FString& File : Visitor.FoundFiles)
 	{
-		// 计算短路径: Content/Setting/ui.txt -> Game/Setting/ui.txt
+		// 计算相对路径: Content/Setting/txt_pak.txt -> Setting/txt_pak.txt
 		FString RelativePath = File;
 		FPaths::MakePathRelativeTo(RelativePath, *ContentDir);
+
+		// PakPath: Game/Setting/txt_pak.txt（去掉前导 /，用于 filemanifest.json 的 filePath）
 		FString PakPath = TEXT("Game") / RelativePath;
-		OutPaths.Add(PakPath);
+
+		// SourcePath: 源文件完整路径，用于 Hash 计算
+		FString SourcePath = File;
+
+		OutStagedFiles.Add(FHotUpdateStagedFileInfo(PakPath, SourcePath));
 	}
 }

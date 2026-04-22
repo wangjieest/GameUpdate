@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "HotUpdateEditorTypes.h"
+#include "HotUpdatePackagingSettingsHelper.h"
 #include "HotUpdateBaseVersionBuilder.generated.h"
 
 class IAssetRegistry;
@@ -124,6 +125,9 @@ struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildConfig
 
 	/// 预收集的热更资产列表（ApplyMinimalPackageFilter 输出，由游戏线程填充）
 	TArray<FString> PreCollectedPatchAssetPaths;
+
+	/// 预收集的 Staged 文件列表（非 UE 资产）
+	TArray<FHotUpdateStagedFileInfo> PreCollectedStagedFiles;
 
 	FHotUpdateBaseVersionBuildConfig()
 		: Platform(EHotUpdatePlatform::Windows)

@@ -230,9 +230,10 @@ void FHotUpdateBaseVersionBuilder::BuildBaseVersion(const FHotUpdateBaseVersionB
 
 		CurrentConfig.PreCollectedPatchAssetPaths = PatchAssetPaths;
 		CachedWhitelistAssetPaths = WhitelistAssetPaths;
+		CurrentConfig.PreCollectedStagedFiles = PackagingResult.StagedFiles;
 
-		UE_LOG(LogHotUpdateEditor, Log, TEXT("预收集完成，首包资源: %d 个，热更资源: %d 个"),
-			WhitelistAssetPaths.Num(), PatchAssetPaths.Num());
+		UE_LOG(LogHotUpdateEditor, Log, TEXT("预收集完成，首包资源: %d 个，热更资源: %d 个，Staged 文件: %d 个"),
+			WhitelistAssetPaths.Num(), PatchAssetPaths.Num(), PackagingResult.StagedFiles.Num());
 	}
 
 	if (CurrentConfig.bSynchronousMode)
@@ -885,19 +886,43 @@ bool FHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 	TArray<FHotUpdateResolvedAssetInfo> BaseAssets;
 	TArray<FHotUpdateResolvedAssetInfo> PatchAssets;
 
-	// 获取打包配置结果（包含依赖和 Staged 文件）
-	FHotUpdatePackagingSettingsResult PackagingResult = FHotUpdatePackagingSettingsHelper::ParsePackagingSettings(true);
-
+	// 最小包模式下已预收集数据，无需重复调用；整包模式在下方收集
 	if (CurrentConfig.MinimalPackageConfig.bEnableMinimalPackage)
 	{
 		// 最小包模式：使用预收集的缓存数据
 		BaseAssets = ResolveAssetInfo(CachedWhitelistAssetPaths, CookedPlatformDir);
 		PatchAssets = ResolveAssetInfo(CurrentConfig.PreCollectedPatchAssetPaths, CookedPlatformDir);
+
+			// 处理预收集的 Staged 文件
+			for (const FHotUpdateStagedFileInfo& StagedFile : CurrentConfig.PreCollectedStagedFiles)
+			{
+				if (FPaths::FileExists(*StagedFile.SourcePath))
+				{
+					BaseAssets.Add(FHotUpdateResolvedAssetInfo::FromStagedFile(StagedFile.PakPath, StagedFile.SourcePath));
+				}
+				else
+				{
+					UE_LOG(LogHotUpdateEditor, Warning, TEXT("Staged 文件不存在: %s"), *StagedFile.SourcePath);
+				}
+			}
 	}
 	else
 	{
-		// 整包模式：所有资源都进首包，没有热更资源
+		// 整包模式：需要收集所有资源
+		FHotUpdatePackagingSettingsResult PackagingResult = FHotUpdatePackagingSettingsHelper::ParsePackagingSettings(true);
 		BaseAssets = ResolveAssetInfo(PackagingResult.AssetPaths, CookedPlatformDir);
+		// 处理 Staged 文件（非 UE 资产）
+		for (const FHotUpdateStagedFileInfo& StagedFile : PackagingResult.StagedFiles)
+		{
+			if (FPaths::FileExists(*StagedFile.SourcePath))
+			{
+				BaseAssets.Add(FHotUpdateResolvedAssetInfo::FromStagedFile(StagedFile.PakPath, StagedFile.SourcePath));
+			}
+			else
+			{
+				UE_LOG(LogHotUpdateEditor, Warning, TEXT("Staged 文件不存在: %s"), *StagedFile.SourcePath);
+			}
+		}
 	}
 	
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("收集了 %d 个基础资源, %d 个热更资源用于差异计算"),

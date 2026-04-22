@@ -148,4 +148,52 @@ bool UHotUpdateAssetManager::GetPackageChunkIds(
 	OutChunkList.Add(11);
 	return true;
 }
+
+TMap<int32, FAssetManagerChunkInfo> UHotUpdateAssetManager::BuildChunkMap(const TSet<FName>& PackagesToUpdateChunksFor,
+	const TSet<FName>& StartupPackages, const TSet<FName>& PackageThatWereCooked) const
+{
+	UE_LOG(LogHotUpdate, Log, TEXT("BuildChunkMap called:"));
+	UE_LOG(LogHotUpdate, Log, TEXT("  PackagesToUpdateChunksFor: %d items"), PackagesToUpdateChunksFor.Num());
+	UE_LOG(LogHotUpdate, Log, TEXT("  StartupPackages: %d items"), StartupPackages.Num());
+	UE_LOG(LogHotUpdate, Log, TEXT("  PackageThatWereCooked: %d items"), PackageThatWereCooked.Num());
+
+	// 输出 PackagesToUpdateChunksFor 内容
+	if (PackagesToUpdateChunksFor.Num() > 0)
+	{
+		UE_LOG(LogHotUpdate, Log, TEXT("  PackagesToUpdateChunksFor items:"));
+		for (const FName& Package : PackagesToUpdateChunksFor)
+		{
+			UE_LOG(LogHotUpdate, Log, TEXT("    - %s"), *Package.ToString());
+		}
+	}
+
+	// 输出 StartupPackages 内容
+	if (StartupPackages.Num() > 0)
+	{
+		UE_LOG(LogHotUpdate, Log, TEXT("  StartupPackages items:"));
+		for (const FName& Package : StartupPackages)
+		{
+			UE_LOG(LogHotUpdate, Log, TEXT("    - %s"), *Package.ToString());
+		}
+	}
+
+	// 输出 PackageThatWereCooked 前 20 个作为样本
+	if (PackageThatWereCooked.Num() > 0)
+	{
+		UE_LOG(LogHotUpdate, Log, TEXT("  PackageThatWereCooked sample (first 20):"));
+		int32 Count = 0;
+		for (const FName& Package : PackageThatWereCooked)
+		{
+			if (Count >= 20) break;
+			UE_LOG(LogHotUpdate, Log, TEXT("    - %s"), *Package.ToString());
+			Count++;
+		}
+		if (PackageThatWereCooked.Num() > 20)
+		{
+			UE_LOG(LogHotUpdate, Log, TEXT("    ... (%d more items)"), PackageThatWereCooked.Num() - 20);
+		}
+	}
+
+	return Super::BuildChunkMap(PackagesToUpdateChunksFor, StartupPackages, PackageThatWereCooked);
+}
 #endif

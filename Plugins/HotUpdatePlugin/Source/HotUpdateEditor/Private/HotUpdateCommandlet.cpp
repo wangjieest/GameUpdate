@@ -16,6 +16,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogHotUpdateCommandlet, Log, All);
 UHotUpdateCommandlet::UHotUpdateCommandlet(): bShowHelp(false), bIsShipping(false), bSkipBuild(false),
                                               bEnableMinimalPackage(false),
                                               PatchChunkStrategy(EHotUpdateChunkStrategy::None),
+                                              PatchChunkSizeMB(256),
                                               bIncludeBaseContainers(false),
                                               bSkipCook(false),
                                               bIncrementalCook(false)
@@ -141,6 +142,13 @@ bool UHotUpdateCommandlet::ParseCommandLine(const FString& Params)
 		}
 	}
 
+	// 解析分包大小参数（MB）
+	FParse::Value(*Params, TEXT("chunksize="), PatchChunkSizeMB);
+	if (PatchChunkSizeMB < 1)
+	{
+		PatchChunkSizeMB = 256;
+	}
+
 	// 解析全量热更新参数
 	bIncludeBaseContainers = FParse::Param(*Params, TEXT("includebasecontainers"));
 	FParse::Value(*Params, TEXT("basecontainerdir="), BaseContainerDir);
@@ -168,6 +176,7 @@ bool UHotUpdateCommandlet::ParseCommandLine(const FString& Params)
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  EnableMinimalPackage: %s"), bEnableMinimalPackage ? TEXT("true") : TEXT("false"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  WhitelistDirectories: %s"), *WhitelistDirectories);
 		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  PatchChunkStrategy: %s"), *UEnum::GetValueAsString(PatchChunkStrategy));
+	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  PatchChunkSizeMB: %d"), PatchChunkSizeMB);
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  IncludeBaseContainers: %s"), bIncludeBaseContainers ? TEXT("true") : TEXT("false"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  BaseContainerDir: %s"), *BaseContainerDir);
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  TextureFormat: %s"), *TextureFormatStr);
@@ -201,7 +210,9 @@ void UHotUpdateCommandlet::ShowHelp()
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -basecontainerdir     基础版本容器目录路径（全量热更新模式需要）"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -textureformat        Android 纹理格式: ETC2, ASTC, DXT, Multi (base 模式, 默认 ETC2)"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -skipcook             跳过 Cook 步骤 (patch 模式，默认会先 Cook)"));
-		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -incrementalcook      启用增量 Cook，只 Cook 有变更的资源 (patch 模式)"));
+	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -incrementalcook      启用增量 Cook，只 Cook 有变更的资源 (patch 模式)"));
+	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -chunkstrategy        分包策略: None(不分包), Size(按大小分包)"));
+	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -chunksize            分包大小，单位MB (默认256，配合 -chunkstrategy=Size 使用)"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("  -help                 显示帮助信息"));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT(""));
 	UE_LOG(LogHotUpdateCommandlet, Log, TEXT("示例:"));
@@ -251,6 +262,8 @@ int32 UHotUpdateCommandlet::ExecuteBasePackage()
 	{
 		Config.MinimalPackageConfig.bEnableMinimalPackage = true;
 		Config.MinimalPackageConfig.PatchChunkStrategy = PatchChunkStrategy;
+		Config.MinimalPackageConfig.PatchChunkConfig.ChunkStrategy = PatchChunkStrategy;
+		Config.MinimalPackageConfig.PatchChunkConfig.SizeBasedConfig.MaxChunkSizeMB = PatchChunkSizeMB;
 
 		// 解析必须包含的目录
 		if (!WhitelistDirectories.IsEmpty())

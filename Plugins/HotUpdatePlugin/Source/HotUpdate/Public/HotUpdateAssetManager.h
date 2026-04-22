@@ -36,6 +36,10 @@ public:
 	virtual bool GetPackageChunkIds(FName PackageName, const ITargetPlatform* TargetPlatform,
 		TArrayView<const int32> ExistingChunkList, TArray<int32>& OutChunkList,
 		TArray<int32>* OutOverrideChunkList = nullptr) const override;
+
+
+	virtual TMap<int32, FAssetManagerChunkInfo> BuildChunkMap(const TSet<FName>& PackagesToUpdateChunksFor, const TSet<FName>& StartupPackages, const TSet<FName>& PackageThatWereCooked) const override;
+	
 	//~End of UAssetManager interface
 #endif
 };

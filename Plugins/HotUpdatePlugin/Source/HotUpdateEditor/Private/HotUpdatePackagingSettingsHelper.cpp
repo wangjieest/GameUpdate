@@ -293,12 +293,10 @@ void FHotUpdatePackagingSettingsHelper::CollectStagedFilesFromDirectory(const FD
 
 	for (const FString& File : Visitor.FoundFiles)
 	{
-		// 计算相对路径: Content/Setting/txt_pak.txt -> Setting/txt_pak.txt
-		FString RelativePath = File;
-		FPaths::MakePathRelativeTo(RelativePath, *ContentDir);
-
-		// PakPath: Game/Setting/txt_pak.txt（去掉前导 /，用于 filemanifest.json 的 filePath）
-		FString PakPath = TEXT("Game") / RelativePath;
+		// PakPath: /{ProjectName}/Content/Setting/txt_pak.txt（用于 filemanifest.json 的 filePath）
+		FString PakPath = File;
+		FPaths::MakePathRelativeTo(PakPath, *ContentDir);
+		PakPath = TEXT("/") + FString(FApp::GetProjectName()) / TEXT("Content") / PakPath;
 
 		// SourcePath: 源文件完整路径，用于 Hash 计算
 		FString SourcePath = File;

@@ -238,7 +238,7 @@ void FHotUpdateAssetFilter::GetDependenciesRecursive(
 			TArray<FName> HardDeps;
 			TArray<FName> SoftDeps;
 			AssetRegistry->GetDependencies(FName(*AssetPath), HardDeps, Category,
-				UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard));
+				UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard | UE::AssetRegistry::EDependencyQuery::Game));
 			AssetRegistry->GetDependencies(FName(*AssetPath), SoftDeps, Category,
 				UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Soft));
 			Dependencies.Append(HardDeps);

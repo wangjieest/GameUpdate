@@ -153,16 +153,7 @@ private:
 	 * @return Pak 内部 Dest 路径（不含扩展名）
 	 */
 	static FString MapToPakMountPath(const FString& PakPath);
-
-	/**
-	 * 将插件包路径映射为 Pak 内部挂载路径
-	 * 通过 FPackageName 解析实际文件路径，区分引擎插件和项目插件
-	 * @param PluginPakPath 插件包路径（如 /NNE/Foo）
-	 * @param ProjectName 项目名称
-	 * @return Pak 内部 Dest 路径
-	 */
-	static FString MapPluginPathToPakMountPath(const FString& PluginPakPath, const FString& ProjectName);
-
+	
 	/**
 	 * 生成响应文件
 	 */

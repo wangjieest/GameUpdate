@@ -866,6 +866,11 @@ bool FHotUpdatePatchPackageBuilder::CollectAssets(TArray<FString>& OutAssetPaths
 			return false;
 		}
 		AllAssetPaths = SettingsResult.AssetPaths;
+		// 收集 Staged 文件的 PakPath
+		for (const FHotUpdateStagedFileInfo& StagedFile : SettingsResult.StagedFiles)
+		{
+			AllNonAssetPaths.Add(StagedFile.PakPath);
+		}
 	}
 
 	AllAssetPaths.Append(AllNonAssetPaths);
@@ -876,25 +881,23 @@ bool FHotUpdatePatchPackageBuilder::CollectAssets(TArray<FString>& OutAssetPaths
 	FString CookedPlatformDir = HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform);
 	for (const FString& AssetPath : AllAssetPaths)
 	{
-		// 检查是否为 Staged 文件（pak 内路径格式，如 GameUpdate/Content/Setting/ui.txt）
-		FString StagedPrefix = TEXT("Game/");
+		// 检查是否为 Staged 文件（pak 内路径格式，如 /GameUpdate/Content/Setting/ui.txt）
+		FString StagedPrefix = TEXT("/") + FString(FApp::GetProjectName()) + TEXT("/Content/");
 		bool bIsStagedFile = AssetPath.StartsWith(StagedPrefix) &&
 			!AssetPath.EndsWith(TEXT(".uasset")) && !AssetPath.EndsWith(TEXT(".umap"));
 
 		if (bIsStagedFile)
 		{
 			// Staged 文件：从 pak 内路径映射回 Content 目录的源文件路径
-			// GameUpdate/Content/Setting/ui.txt -> Content/Setting/ui.txt
-			FString RelativePath = AssetPath.RightChop(5); // 去掉 "Game/"
+			// /GameUpdate/Content/Setting/ui.txt -> Content/Setting/ui.txt
+			FString RelativePath = AssetPath.RightChop(StagedPrefix.Len());
 			FString SourcePath = FPaths::ProjectContentDir() / RelativePath;
 
 			if (FPaths::FileExists(*SourcePath))
 			{
-				// 归一化为 UE Long Package Name 格式（添加前导 /），以便与 FileNameToAssetPath 匹配
-				FString NormalizedAssetPath = TEXT("/") + AssetPath;
-				OutAssetPaths.Add(NormalizedAssetPath);
-				OutAssetDiskPaths.Add(NormalizedAssetPath, SourcePath);
-				OutAssetSourcePaths.Add(NormalizedAssetPath, SourcePath);
+				OutAssetPaths.Add(AssetPath);
+				OutAssetDiskPaths.Add(AssetPath, SourcePath);
+				OutAssetSourcePaths.Add(AssetPath, SourcePath);
 			}
 			else
 			{
@@ -1323,7 +1326,26 @@ bool FHotUpdatePatchPackageBuilder::GenerateManifest(
 	for (const FString& AssetPath : AllAssetPaths)
 	{
 		TSharedPtr<FJsonObject> FileObj = MakeShareable(new FJsonObject);
-		FileObj->SetStringField(TEXT("filePath"), FHotUpdatePackageHelper::ConvertAssetPathToFileName(AssetPath, HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform)));
+
+		// 根据磁盘路径来源判断是否为 UE 资产
+		// UE 资产：DiskPath 以 CookedPlatformDir 开头
+		// 非 UE 资产：DiskPath 是源文件路径（不以 CookedPlatformDir 开头）
+		FString FilePath;
+		const FString* DiskPathPtr = ChangedAssetDiskPaths.Find(AssetPath);
+		FString CookedPlatformDir = HotUpdateUtils::GetCookedPlatformDir(CurrentConfig.Platform);
+
+		if (DiskPathPtr && DiskPathPtr->StartsWith(CookedPlatformDir))
+		{
+			// UE 资产：用 ConvertAssetPathToFileName 解析 Cooked 路径
+			FilePath = FHotUpdatePackageHelper::ConvertAssetPathToFileName(AssetPath, CookedPlatformDir);
+		}
+		else
+		{
+			// 非 UE 资产：AssetPath 已经是 pak 内路径，直接使用
+			FilePath = AssetPath;
+		}
+
+		FileObj->SetStringField(TEXT("filePath"), FilePath);
 
 		// 检查文件来源（优先级：当前 patch > 之前 patch > 基础版本容器 > base manifest）
 		bool bIsCurrentPatch = ChangedAssetDiskPaths.Contains(AssetPath);

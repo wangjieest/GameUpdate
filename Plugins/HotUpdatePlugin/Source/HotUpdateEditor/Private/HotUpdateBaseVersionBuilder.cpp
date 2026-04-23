@@ -36,25 +36,14 @@ struct FHotUpdateResolvedAssetInfo
 
 	FHotUpdateResolvedAssetInfo() = default;
 
-	FHotUpdateResolvedAssetInfo(const FString& InAssetPath, const FString& InDiskPath)
+	FHotUpdateResolvedAssetInfo(const FString& InAssetPath, const FString& InDiskPath, const FString& InCookedPlatformDir)
 		: AssetPath(InAssetPath)
 		, DiskPath(InDiskPath)
 	{
-		// 派生 FileName：去掉 AssetPath 前导 /，再附加 DiskPath 的扩展名
-		// 等价于 ConvertAssetPathToFileName 的结果，但无需再次调用 GetAssetDiskPath
-		FileName = AssetPath;
-		if (FileName.StartsWith(TEXT("/")))
+		// 从 DiskPath 提取 RelativePath 作为 FileName（反映实际 Cooked 文件路径结构）
+		if (!InDiskPath.IsEmpty() && !InCookedPlatformDir.IsEmpty() && InDiskPath.StartsWith(InCookedPlatformDir))
 		{
-			FileName.RightChopInline(1);
-		}
-		FString Extension = FPaths::GetExtension(DiskPath);
-		if (!Extension.IsEmpty())
-		{
-			FileName += TEXT(".") + Extension;
-		}
-		else
-		{
-			FileName += TEXT(".uasset");
+			FileName = InDiskPath.Mid(InCookedPlatformDir.Len());
 		}
 
 		// 派生 SourcePath
@@ -1129,16 +1118,11 @@ TArray<FHotUpdateResolvedAssetInfo> FHotUpdateBaseVersionBuilder::ResolveAssetIn
 
 		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
 		{
-			Result.Emplace(AssetPath, DiskPath);
+			Result.Emplace(AssetPath, DiskPath, CookedPlatformDir);
 		}
 		else
 		{
-			// 引擎插件资源可能未参与 Cook 或被重命名，不属于热更范围，降级为 Verbose
-			if (!AssetPath.StartsWith(TEXT("/Game/")) && !AssetPath.StartsWith(TEXT("/Engine/")) && !AssetPath.StartsWith(TEXT("/Script/")))
-			{
-				UE_LOG(LogHotUpdateEditor, Verbose, TEXT("插件资源磁盘路径解析失败: AssetPath=%s, DiskPath=%s"),
-					*AssetPath, DiskPath.IsEmpty() ? TEXT("(empty)") : *DiskPath);
-			}
+			UE_LOG(LogHotUpdateEditor, Verbose, TEXT("资源磁盘路径解析失败: AssetPath=%s, DiskPath=%s"), *AssetPath, DiskPath.IsEmpty() ? TEXT("(empty)") : *DiskPath);
 		}
 	}
 

@@ -68,7 +68,7 @@ void SHotUpdatePackagingPanel::Construct(const FArguments& InArgs)
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("SHotUpdatePackagingPanel::Construct 完成"));
 
 	// 默认输出目录
-	PackageConfig.OutputDirectory.Path = FPaths::ProjectSavedDir() / TEXT("HotUpdatePackages");
+	PackageConfig.OutputDirectory.Path = FPaths::ProjectSavedDir() / TEXT("HotUpdateVersions");
 
 	ChildSlot
 	[
@@ -561,9 +561,6 @@ TSharedRef<SWidget> SHotUpdatePackagingPanel::CreateAdvancedSettings()
 
 TSharedRef<SWidget> SHotUpdatePackagingPanel::CreateIncrementalSettings()
 {
-	// 更新版本固定为热更包模式
-	PackageConfig.PackagingMode = EHotUpdatePackagingMode::HotfixPackage;
-
 	return SNew(SExpandableArea)
 		.Style(FAppStyle::Get(), "ExpandableArea")
 		.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
@@ -626,7 +623,7 @@ TSharedRef<SWidget> SHotUpdatePackagingPanel::CreateIncrementalSettings()
 						{
 							SelectedVersion = InItem;
 							PackageConfig.BasedOnVersion = InItem->VersionString;
-							PackageConfig.BaseManifestPath = InItem->ManifestPath;
+							PackageConfig.BaseFileManifestPath = InItem->FileManifestPath;
 						}
 					})
 					[
@@ -766,7 +763,7 @@ FReply SHotUpdatePackagingPanel::OnPackageClicked()
 	PatchConfig.PatchVersion = PackageConfig.VersionString;
 	PatchConfig.BaseVersion = PackageConfig.BasedOnVersion;
 	PatchConfig.Platform = PackageConfig.Platform;
-	PatchConfig.BaseManifestPath.FilePath = PackageConfig.BaseManifestPath;
+	PatchConfig.BaseFileManifestPath.FilePath = PackageConfig.BaseFileManifestPath;
 	PatchConfig.bIncludeDependencies = PackageConfig.bIncludeDependencies;
 	PatchConfig.OutputDirectory = PackageConfig.OutputDirectory;
 	PatchConfig.bSkipCook = SkipCookCheckBox.IsValid() && SkipCookCheckBox->IsChecked();
@@ -1068,13 +1065,13 @@ void SHotUpdatePackagingPanel::RefreshVersionSelectOptions()
 	{
 		SelectedVersion = VersionSelectOptions[0];
 		PackageConfig.BasedOnVersion = SelectedVersion->VersionString;
-		PackageConfig.BaseManifestPath = SelectedVersion->ManifestPath;
+		PackageConfig.BaseFileManifestPath = SelectedVersion->FileManifestPath;
 	}
 	else
 	{
 		SelectedVersion.Reset();
 		PackageConfig.BasedOnVersion.Empty();
-		PackageConfig.BaseManifestPath.Empty();
+		PackageConfig.BaseFileManifestPath.Empty();
 	}
 }
 

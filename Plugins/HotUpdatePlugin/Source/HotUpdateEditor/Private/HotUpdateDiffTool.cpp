@@ -63,7 +63,6 @@ FHotUpdateDiffReport FHotUpdateDiffTool::CompareManifests(
 			Diff.ChangeType = EHotUpdateFileChangeType::Added;
 			Diff.NewSize = Entry.FileSize;
 			Diff.NewHash = Entry.FileHash;
-			Diff.AssetType = GetAssetTypeFromExtension(FPaths::GetExtension(Path));
 			Diff.ChangeDescription = FString::Printf(TEXT("新增资源 (%s)"), *FormatFileSize(Diff.NewSize));
 			Report.AddedAssets.Add(Diff);
 		}
@@ -73,7 +72,6 @@ FHotUpdateDiffReport FHotUpdateDiffTool::CompareManifests(
 			Diff.ChangeType = EHotUpdateFileChangeType::Deleted;
 			Diff.OldSize = Entry.FileSize;
 			Diff.OldHash = Entry.FileHash;
-			Diff.AssetType = GetAssetTypeFromExtension(FPaths::GetExtension(Path));
 			Diff.ChangeDescription = FString::Printf(TEXT("删除资源 (%s)"), *FormatFileSize(Diff.OldSize));
 			Report.DeletedAssets.Add(Diff);
 		}
@@ -89,8 +87,7 @@ FHotUpdateDiffReport FHotUpdateDiffTool::CompareManifests(
 				Diff.OldHash = BaseEntry.FileHash;
 				Diff.NewSize = TargetEntry.FileSize;
 				Diff.NewHash = TargetEntry.FileHash;
-				Diff.AssetType = GetAssetTypeFromExtension(FPaths::GetExtension(Path));
-
+	
 				int64 SizeDiff = Diff.NewSize - Diff.OldSize;
 				FString SizeDiffStr = SizeDiff >= 0
 					? FString::Printf(TEXT("+%s"), *FormatFileSize(SizeDiff))
@@ -225,7 +222,6 @@ void FHotUpdateDiffTool::ScanDirectory(
 		Diff.AssetPath = RelativePath;
 		Diff.NewSize = PlatformFile.FileSize(*File);
 		Diff.NewHash = UHotUpdateFileUtils::CalculateFileHash(File);
-		Diff.AssetType = GetAssetTypeFromExtension(FPaths::GetExtension(File));
 
 		OutAssets.Add(RelativePath, Diff);
 	}

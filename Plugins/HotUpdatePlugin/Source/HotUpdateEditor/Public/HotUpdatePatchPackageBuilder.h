@@ -45,8 +45,8 @@ private:
 		TMap<FString, FString>& OutAssetSourcePaths,
 		FString& OutErrorMessage) const;
 
-	/** 加载基础版本 Manifest */
-	static bool LoadBaseManifest(
+	/** 加载基础版本 FileManifest */
+	static bool LoadBaseFileManifest(
 		const FString& ManifestPath,
 		TMap<FString, FString>& OutAssetHashes,
 		TMap<FString, int64>& OutAssetSizes);
@@ -58,14 +58,6 @@ private:
 		const TMap<FString, FString>& BaseHashes,
 		TArray<FString>& OutChangedAssets,
 		FHotUpdateDiffReport& OutReport);
-
-	/** 加载之前的 Patch Manifest（链式 Patch） */
-	static bool LoadPreviousPatchManifest(
-		const FString& ManifestPath,
-		TArray<FHotUpdateContainerInfo>& OutContainers,
-		TMap<FString, FString>& OutPatchFilesHash,
-		TMap<FString, int64>& OutPatchFilesSize,
-		FString& OutPatchVersion);
 
 	/** 加载基础版本容器信息（全量热更新） */
 	static bool LoadBaseContainers(
@@ -84,10 +76,6 @@ private:
 		const TMap<FString, FString>& BaseAssetHashes,
 		const TMap<FString, int64>& BaseAssetSizes,
 		const FHotUpdateDiffReport& DiffReport,
-		const TArray<FHotUpdateContainerInfo>& ChainPatchContainers = TArray<FHotUpdateContainerInfo>(),
-		const TMap<FString, FString>& PreviousPatchFilesHash = TMap<FString, FString>(),
-		const TMap<FString, int64>& PreviousPatchFilesSize = TMap<FString, int64>(),
-		const TArray<FString>& PatchVersionChain = TArray<FString>(),
 		const TArray<FHotUpdateContainerInfo>& BaseContainers = TArray<FHotUpdateContainerInfo>(),
 		const TMap<FString, FString>& BaseContainerFilesHash = TMap<FString, FString>(),
 		const TMap<FString, int64>& BaseContainerFilesSize = TMap<FString, int64>()) const;

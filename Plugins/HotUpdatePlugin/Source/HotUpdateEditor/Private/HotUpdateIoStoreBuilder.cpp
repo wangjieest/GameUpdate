@@ -281,26 +281,45 @@ FString FHotUpdateIoStoreBuilder::MapToPakMountPath(const FString& PakPath)
 {
 	const FString ProjectName = FApp::GetProjectName();
 
-	// 步骤1：解析虚拟路径为实际路径
-	FString ResolvedPath;
-	FPackageName::TryConvertLongPackageNameToFilename(PakPath, ResolvedPath, TEXT(""));
-	FPaths::NormalizeDirectoryName(ResolvedPath);
+	// 判断是否为绝对路径（Staged 文件的源文件路径）
+	bool bIsAbsolutePath = PakPath.Contains(TEXT(":/")) || PakPath.Contains(TEXT(":\\"));
 
-	// 步骤2：转换为绝对路径
+	FString AbsolutePath;
+	if (bIsAbsolutePath)
+	{
+		// 绝对路径：直接使用，跳过虚拟路径解析
+		AbsolutePath = PakPath;
+		FPaths::NormalizeDirectoryName(AbsolutePath);
+	}
+	else
+	{
+		// 虚拟路径：解析为实际路径
+		FString ResolvedPath;
+		FPackageName::TryConvertLongPackageNameToFilename(PakPath, ResolvedPath, TEXT(""));
+		FPaths::NormalizeDirectoryName(ResolvedPath);
+
+		// 转换为绝对路径
+		if (FPaths::IsRelative(ResolvedPath))
+		{
+			FString EngineDir = FPaths::EngineDir();
+			FPaths::NormalizeDirectoryName(EngineDir);
+			AbsolutePath = FPaths::ConvertRelativePathToFull(EngineDir, ResolvedPath);
+			FPaths::NormalizeDirectoryName(AbsolutePath);
+		}
+		else
+		{
+			AbsolutePath = ResolvedPath;
+		}
+	}
+
+	// 获取标准化的目录路径用于比较
 	FString EngineDir = FPaths::EngineDir();
 	FPaths::NormalizeDirectoryName(EngineDir);
 
 	FString ProjectDir = FPaths::ProjectDir();
 	FPaths::NormalizeDirectoryName(ProjectDir);
 
-	FString AbsolutePath = ResolvedPath;
-	if (FPaths::IsRelative(ResolvedPath))
-	{
-		AbsolutePath = FPaths::ConvertRelativePathToFull(EngineDir, ResolvedPath);
-		FPaths::NormalizeDirectoryName(AbsolutePath);
-	}
-
-	// 步骤3：判断归属
+	// 判断归属
 	// 引擎目录下的文件（含引擎插件）
 	if (AbsolutePath.StartsWith(EngineDir))
 	{
@@ -328,10 +347,16 @@ FString FHotUpdateIoStoreBuilder::GetPakInternalPath(const FString& AssetPath, c
 
 	FString PakPath = AssetPath;
 
-	// 确保路径以 / 开头（标准 UE 长包名格式）
-	if (!PakPath.StartsWith(TEXT("/")))
+	// 处理绝对路径（Staged 文件的源文件路径）
+	// 绝对路径格式：E:/... 或 D:/...，不需要添加 / 前缀
+	bool bIsAbsolutePath = PakPath.Contains(TEXT(":/")) || PakPath.Contains(TEXT(":\\"));
+	if (!bIsAbsolutePath)
 	{
-		PakPath = TEXT("/") + PakPath;
+		// 确保路径以 / 开头（标准 UE 长包名格式）
+		if (!PakPath.StartsWith(TEXT("/")))
+		{
+			PakPath = TEXT("/") + PakPath;
+		}
 	}
 
 	// 步骤1：确定文件扩展名（可能剥离路径中已有的 UE 扩展名）

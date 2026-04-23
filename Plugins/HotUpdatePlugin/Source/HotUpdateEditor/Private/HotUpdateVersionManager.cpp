@@ -224,7 +224,7 @@ TArray<FHotUpdateVersionSelectItem> FHotUpdateVersionManager::GetSelectableVersi
 			Item.VersionString = Info->VersionString;
 			Item.PackageKind = Info->PackageKind;
 			Item.BaseVersion = Info->BaseVersion;
-			Item.ManifestPath = Info->ManifestPath;
+			Item.FileManifestPath = Info->FileManifestPath;
 			Item.CreatedTime = Info->CreatedTime;
 
 			// 生成显示名称
@@ -326,7 +326,7 @@ bool FHotUpdateVersionManager::LoadVersionRegistry()
 			FString CreatedTimeStr = VersionObj->GetStringField(TEXT("createdTime"));
 			FDateTime::ParseIso8601(*CreatedTimeStr, Info.CreatedTime);
 
-			Info.ManifestPath = VersionObj->GetStringField(TEXT("manifestPath"));
+			Info.FileManifestPath = VersionObj->GetStringField(TEXT("fileManifestPath"));
 			Info.UtocPath = VersionObj->GetStringField(TEXT("utocPath"));
 			Info.AssetCount = VersionObj->GetIntegerField(TEXT("assetCount"));
 			Info.PackageSize = VersionObj->GetNumberField(TEXT("packageSize"));
@@ -360,7 +360,7 @@ bool FHotUpdateVersionManager::SaveVersionRegistry()
 			VersionObj->SetStringField(TEXT("baseVersion"), Info.BaseVersion);
 			VersionObj->SetNumberField(TEXT("platform"), static_cast<int32>(Info.Platform));
 			VersionObj->SetStringField(TEXT("createdTime"), Info.CreatedTime.ToIso8601());
-			VersionObj->SetStringField(TEXT("manifestPath"), Info.ManifestPath);
+			VersionObj->SetStringField(TEXT("fileManifestPath"), Info.FileManifestPath);
 			VersionObj->SetStringField(TEXT("utocPath"), Info.UtocPath);
 			VersionObj->SetNumberField(TEXT("assetCount"), Info.AssetCount);
 			VersionObj->SetNumberField(TEXT("packageSize"), Info.PackageSize);

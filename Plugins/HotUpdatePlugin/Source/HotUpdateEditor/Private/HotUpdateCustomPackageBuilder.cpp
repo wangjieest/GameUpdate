@@ -166,7 +166,7 @@ FHotUpdateCustomPackageResult FHotUpdateCustomPackageBuilder::ExecuteBuild(const
 
 		if (!PackageName.IsEmpty())
 		{
-			DiskPath = FHotUpdatePackageHelper::GetAssetDiskPath(PackageName, CookedPlatformDir);
+			DiskPath = FHotUpdatePackageHelper::GetCookedAssetPath(PackageName, CookedPlatformDir);
 		}
 
 		// 如果 Cook 后路径不存在，尝试使用用户提供的路径

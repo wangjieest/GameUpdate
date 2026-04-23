@@ -391,7 +391,6 @@ FReply SHotUpdateVersionDiffPanel::OnExportReportClicked()
 				{
 					Writer->WriteObjectStart();
 					Writer->WriteValue(TEXT("path"), Diff.AssetPath);
-					Writer->WriteValue(TEXT("type"), Diff.AssetType);
 					Writer->WriteValue(TEXT("oldSize"), Diff.OldSize);
 					Writer->WriteValue(TEXT("newSize"), Diff.NewSize);
 					Writer->WriteValue(TEXT("oldHash"), Diff.OldHash);
@@ -683,7 +682,6 @@ void SHotUpdateVersionDiffPanel::UpdateDetailsPanel(TSharedPtr<FDiffTreeNode> No
 
 	AddDetailRow(TEXT("名称"), Node->Name);
 	AddDetailRow(TEXT("完整路径"), Node->FullPath);
-	AddDetailRow(TEXT("类型"), Node->bIsFolder ? TEXT("文件夹") : Node->DiffInfo.AssetType);
 
 	if (!Node->bIsFolder)
 	{

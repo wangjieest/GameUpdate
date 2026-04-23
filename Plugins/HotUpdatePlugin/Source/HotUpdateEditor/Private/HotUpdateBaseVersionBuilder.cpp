@@ -19,57 +19,27 @@
 #include "Misc/PackageName.h"
 
 /**
- * 资源解析结果（内部使用，用于在 SaveResourceHashesInGameThread 的各步骤间传递数据）
- * 替代原来的 TMap<FString, FString>，每个资源只调用一次 GetAssetDiskPath，
- * 在构造时直接派生 FileName（等价于 ConvertAssetPathToFileName）和 SourcePath
+ * 资源解析结果
  */
 struct FHotUpdateResolvedAssetInfo
 {
-	/** 资源路径（如 /Game/Maps/MainMenu） */
+	/** 相对路径（如 Game/Maps/MainMenu.umap 或 Engine/Plugins/.../xxx.uasset），用于 manifest filePath */
 	FString AssetPath;
-	/** Cooked 磁盘路径（如 D:/Project/Saved/Cooked/Windows/Game/Maps/MainMenu.umap） */
-	FString DiskPath;
-	/** 文件名（如 Game/Maps/MainMenu.umap），从 AssetPath 去掉前导 / + DiskPath 的扩展名派生 */
-	FString FileName;
-	/** 源文件路径（Content 目录下的 .uasset/.umap），用于 Hash 计算 */
-	FString SourcePath;
+	/** 文件 Hash */
+	FString FileHash;
+	/** 文件大小 */
+	int64 FileSize;
 
-	FHotUpdateResolvedAssetInfo() = default;
+	FHotUpdateResolvedAssetInfo()
+		: FileSize(0)
+	{}
 
-	FHotUpdateResolvedAssetInfo(const FString& InAssetPath, const FString& InDiskPath, const FString& InCookedPlatformDir)
+	FHotUpdateResolvedAssetInfo(const FString& InAssetPath, const FString& InFileHash, int64 InFileSize)
 		: AssetPath(InAssetPath)
-		, DiskPath(InDiskPath)
-	{
-		// 从 DiskPath 提取 RelativePath 作为 FileName（反映实际 Cooked 文件路径结构）
-		if (!InDiskPath.IsEmpty() && !InCookedPlatformDir.IsEmpty() && InDiskPath.StartsWith(InCookedPlatformDir))
-		{
-			FileName = InDiskPath.Mid(InCookedPlatformDir.Len());
-		}
-
-		// 派生 SourcePath
-		SourcePath = FHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
-	}
-
-	/**
-	 * 从 Staged 文件构建（非 UE 资源，如 DirectoriesToAlwaysStageAsUFS/NonUFS 中的文件）
-	 * @param InPakPath pak 内路径（如 GameUpdate/Content/Setting/ui.txt），也用作 filemanifest.json 中的 filePath
-	 * @param InSourcePath 源文件磁盘路径（如 D:/Project/Content/Setting/ui.txt），用于 Hash 计算
-	 */
-	static FHotUpdateResolvedAssetInfo FromStagedFile(const FString& InPakPath, const FString& InSourcePath)
-	{
-		FHotUpdateResolvedAssetInfo Info;
-		Info.AssetPath = InPakPath;
-		Info.DiskPath = InSourcePath;
-		Info.FileName = InPakPath;
-		Info.SourcePath = InSourcePath;
-		return Info;
-	}
-
-	/** 获取用于 Hash 计算的路径（优先 SourcePath，回退 DiskPath） */
-	FString GetHashPath() const
-	{
-		return (!SourcePath.IsEmpty() && FPaths::FileExists(*SourcePath)) ? SourcePath : DiskPath;
-	}
+		, FileHash(InFileHash)
+		, FileSize(InFileSize)
+	{}
+	
 };
 
 FHotUpdateBaseVersionBuilder::FHotUpdateBaseVersionBuilder()
@@ -841,7 +811,12 @@ bool FHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 	FPaths::NormalizeDirectoryName(VersionDir);
 	IPlatformFile::GetPlatformPhysical().CreateDirectoryTree(*VersionDir);
 
-	TArray<FHotUpdateContainerInfo> ContainerInfos = CollectContainerInfos(PlatformDir, VersionDir);
+	TArray<FHotUpdateContainerInfo> ContainerInfos;
+	FString HotUpdatePaksDir = FPaths::Combine(VersionDir, TEXT("Paks"));
+	CollectContainerFiles(HotUpdatePaksDir, VersionDir, EHotUpdateContainerType::Patch, ContainerInfos);
+
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("收集了 %d 个容器"), ContainerInfos.Num());
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("版本目录: %s"), *VersionDir);
 
 	// 3. 生成并保存 manifest.json（同时输出共享的 VersionObject 和 ChunksArray）
 	TSharedPtr<FJsonObject> VersionObject;
@@ -864,17 +839,21 @@ bool FHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 		PatchAssets = ResolveAssetInfo(CurrentConfig.PreCollectedPatchAssetPaths, CookedPlatformDir);
 
 			// 处理预收集的 Staged 文件
-			for (const FHotUpdateStagedFileInfo& StagedFile : CurrentConfig.PreCollectedStagedFiles)
+		for (const FHotUpdateStagedFileInfo& StagedFile : CurrentConfig.PreCollectedStagedFiles)
+		{
+			if (FPaths::FileExists(*StagedFile.SourcePath))
 			{
-				if (FPaths::FileExists(*StagedFile.SourcePath))
-				{
-					BaseAssets.Add(FHotUpdateResolvedAssetInfo::FromStagedFile(StagedFile.PakPath, StagedFile.SourcePath));
-				}
-				else
-				{
-					UE_LOG(LogHotUpdateEditor, Warning, TEXT("Staged 文件不存在: %s"), *StagedFile.SourcePath);
-				}
+				int64 FileSize = IFileManager::Get().FileSize(*StagedFile.SourcePath);
+				FString FileHash = UHotUpdateFileUtils::CalculateFileHash(StagedFile.SourcePath);
+				// Staged 文件：使用源文件绝对路径作为 filePath
+				FString AbsolutePath = FPaths::ConvertRelativePathToFull(StagedFile.SourcePath);
+				BaseAssets.Add(FHotUpdateResolvedAssetInfo(AbsolutePath, FileHash, FileSize));
 			}
+			else
+			{
+				UE_LOG(LogHotUpdateEditor, Warning, TEXT("Staged 文件不存在: %s"), *StagedFile.SourcePath);
+			}
+		}
 	}
 	else
 	{
@@ -886,7 +865,11 @@ bool FHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 		{
 			if (FPaths::FileExists(*StagedFile.SourcePath))
 			{
-				BaseAssets.Add(FHotUpdateResolvedAssetInfo::FromStagedFile(StagedFile.PakPath, StagedFile.SourcePath));
+				int64 FileSize = IFileManager::Get().FileSize(*StagedFile.SourcePath);
+				FString FileHash = UHotUpdateFileUtils::CalculateFileHash(StagedFile.SourcePath);
+				// Staged 文件：使用源文件绝对路径作为 filePath
+				FString AbsolutePath = FPaths::ConvertRelativePathToFull(StagedFile.SourcePath);
+				BaseAssets.Add(FHotUpdateResolvedAssetInfo(AbsolutePath, FileHash, FileSize));
 			}
 			else
 			{
@@ -895,8 +878,7 @@ bool FHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 		}
 	}
 	
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("收集了 %d 个基础资源, %d 个热更资源用于差异计算"),
-		BaseAssets.Num(), PatchAssets.Num());
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("收集了 %d 个基础资源, %d 个热更资源用于差异计算"), BaseAssets.Num(), PatchAssets.Num());
 
 	// 5. 生成并保存 filemanifest.json
 	if (!BuildFileManifestJson(VersionDir, VersionObject, ChunksArray, BaseAssets, PatchAssets))
@@ -911,7 +893,7 @@ bool FHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 	VersionInfo.PackageKind = EHotUpdatePackageKind::Base;
 	VersionInfo.Platform = CurrentConfig.Platform;
 	VersionInfo.CreatedTime = FDateTime::Now();
-	VersionInfo.ManifestPath = FPaths::Combine(VersionDir, TEXT("manifest.json"));
+	VersionInfo.FileManifestPath = FPaths::Combine(VersionDir, TEXT("filemanifest.json"));
 	VersionInfo.AssetCount = BaseAssets.Num() + PatchAssets.Num();
 
 	VersionManager.RegisterVersion(VersionInfo);
@@ -944,100 +926,68 @@ FString FHotUpdateBaseVersionBuilder::ResolvePlatformOutputDir() const
 	return PlatformDir;
 }
 
-TArray<FHotUpdateContainerInfo> FHotUpdateBaseVersionBuilder::CollectContainerInfos(const FString& PlatformDir, const FString& VersionDir)
+void FHotUpdateBaseVersionBuilder::CollectContainerFiles(
+	const FString& SearchDir,
+	const FString& BaseDir,
+	EHotUpdateContainerType ContainerType,
+	TArray<FHotUpdateContainerInfo>& OutContainerInfos)
 {
-	TArray<FHotUpdateContainerInfo> ContainerInfos;
 	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
 
-	// 收集指定目录下的容器文件
-	// BaseDir: 计算相对路径的基准目录
-	auto CollectContainers = [&](const FString& SearchDir, const FString& BaseDir, EHotUpdateContainerType InContainerType)
+	if (!PlatformFile.DirectoryExists(*SearchDir))
 	{
-		if (!PlatformFile.DirectoryExists(*SearchDir))
+		return;
+	}
+
+	TArray<FString> UtocFiles;
+	PlatformFile.FindFilesRecursively(UtocFiles, *SearchDir, TEXT("utoc"));
+	for (const FString& UtocFile : UtocFiles)
+	{
+		FHotUpdateContainerInfo ContainerInfo;
+		ContainerInfo.ContainerName = FPaths::GetBaseFilename(UtocFile);
+		ContainerInfo.UtocPath = UtocFile.RightChop(BaseDir.Len() + 1);
+		ContainerInfo.UtocSize = IFileManager::Get().FileSize(*UtocFile);
+		ContainerInfo.UtocHash = UHotUpdateFileUtils::CalculateFileHash(UtocFile);
+		ContainerInfo.ContainerType = ContainerType;
+
+		FString UcasFile = UtocFile.Replace(TEXT(".utoc"), TEXT(".ucas"));
+		if (PlatformFile.FileExists(*UcasFile))
 		{
-			return;
+			ContainerInfo.UcasPath = UcasFile.RightChop(BaseDir.Len() + 1);
+			ContainerInfo.UcasSize = IFileManager::Get().FileSize(*UcasFile);
+			ContainerInfo.UcasHash = UHotUpdateFileUtils::CalculateFileHash(UcasFile);
 		}
 
-		// 从文件名解析 chunkId（pakchunk{n} → n，其他 → -1）
-		auto ParseChunkId = [](const FString& Filename) -> int32
-		{
-			if (Filename.StartsWith(TEXT("pakchunk")))
-			{
-				FString NumStr;
-				for (int32 i = 8; i < Filename.Len() && FChar::IsDigit(Filename[i]); ++i)
-				{
-					NumStr += Filename[i];
-				}
-				return NumStr.IsEmpty() ? -1 : FCString::Atoi(*NumStr);
-			}
-			return -1;
-		};
+		OutContainerInfos.Add(ContainerInfo);
+	}
 
-		TArray<FString> UtocFiles;
-		PlatformFile.FindFilesRecursively(UtocFiles, *SearchDir, TEXT("utoc"));
+	TArray<FString> PakFiles;
+	PlatformFile.FindFilesRecursively(PakFiles, *SearchDir, TEXT("pak"));
+	for (const FString& PakFile : PakFiles)
+	{
+		bool bAlreadyCollected = false;
 		for (const FString& UtocFile : UtocFiles)
 		{
-			FHotUpdateContainerInfo ContainerInfo;
-			ContainerInfo.ContainerName = FPaths::GetBaseFilename(UtocFile);
-			ContainerInfo.UtocPath = UtocFile.RightChop(BaseDir.Len() + 1);
-			ContainerInfo.UtocSize = IFileManager::Get().FileSize(*UtocFile);
-			ContainerInfo.UtocHash = UHotUpdateFileUtils::CalculateFileHash(UtocFile);
-			ContainerInfo.ContainerType = InContainerType;
-			ContainerInfo.ChunkId = ParseChunkId(ContainerInfo.ContainerName);
-
-			// 查找对应的 ucas 文件
-			FString UcasFile = UtocFile.Replace(TEXT(".utoc"), TEXT(".ucas"));
-			if (PlatformFile.FileExists(*UcasFile))
+			if (FPaths::GetBaseFilename(UtocFile) == FPaths::GetBaseFilename(PakFile))
 			{
-				ContainerInfo.UcasPath = UcasFile.RightChop(BaseDir.Len() + 1);
-				ContainerInfo.UcasSize = IFileManager::Get().FileSize(*UcasFile);
-				ContainerInfo.UcasHash = UHotUpdateFileUtils::CalculateFileHash(UcasFile);
+				bAlreadyCollected = true;
+				break;
 			}
+		}
+		if (bAlreadyCollected)
+		{
+			continue;
+		}
 
-			ContainerInfos.Add(ContainerInfo);
-			}
+		FHotUpdateContainerInfo ContainerInfo;
+		ContainerInfo.ContainerName = FPaths::GetBaseFilename(PakFile);
+		ContainerInfo.PakPath = PakFile.RightChop(BaseDir.Len() + 1);
+		ContainerInfo.PakSize = IFileManager::Get().FileSize(*PakFile);
+		ContainerInfo.PakHash = UHotUpdateFileUtils::CalculateFileHash(PakFile);
+		ContainerInfo.ContainerType = ContainerType;
 
-			// 收集传统 Pak 格式（.pak）
-			TArray<FString> PakFiles;
-			PlatformFile.FindFilesRecursively(PakFiles, *SearchDir, TEXT("pak"));
-			for (const FString& PakFile : PakFiles)
-			{
-				// 排除已通过 IoStore 收集的容器（避免重复）
-				bool bAlreadyCollected = false;
-				for (const FString& UtocFile : UtocFiles)
-				{
-					if (FPaths::GetBaseFilename(UtocFile) == FPaths::GetBaseFilename(PakFile))
-					{
-						bAlreadyCollected = true;
-						break;
-					}
-				}
-				if (bAlreadyCollected)
-				{
-					continue;
-				}
-
-				FHotUpdateContainerInfo ContainerInfo;
-				ContainerInfo.ContainerName = FPaths::GetBaseFilename(PakFile);
-				ContainerInfo.PakPath = PakFile.RightChop(BaseDir.Len() + 1);
-				ContainerInfo.PakSize = IFileManager::Get().FileSize(*PakFile);
-				ContainerInfo.PakHash = UHotUpdateFileUtils::CalculateFileHash(PakFile);
-				ContainerInfo.ContainerType = InContainerType;
-				ContainerInfo.ChunkId = ParseChunkId(ContainerInfo.ContainerName);
-
-				ContainerInfos.Add(ContainerInfo);
-			}
-		};
-
-	// 遍历热更资源目录（StripExtraPakChunks 移出的 pakchunk1+）
-	// 注意：基础包（pakchunk0）在 BaseVersionBuilds 目录，不写入热更版本的 manifest
-	FString HotUpdatePaksDir = FPaths::Combine(VersionDir, TEXT("Paks"));
-	CollectContainers(HotUpdatePaksDir, VersionDir, EHotUpdateContainerType::Patch);
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("收集了 %d 个容器"), ContainerInfos.Num());
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("版本目录: %s"), *VersionDir);
-
-	return ContainerInfos;
+		OutContainerInfos.Add(ContainerInfo);
+	}
 }
 
 bool FHotUpdateBaseVersionBuilder::BuildManifestJson(
@@ -1063,7 +1013,6 @@ bool FHotUpdateBaseVersionBuilder::BuildManifestJson(
 		ChunkObject->SetStringField(TEXT("ChunkName"), Container.ContainerName);
 		ChunkObject->SetStringField(TEXT("containerType"),
 			Container.ContainerType == EHotUpdateContainerType::Base ? TEXT("base") : TEXT("patch"));
-		ChunkObject->SetNumberField(TEXT("chunkId"), Container.ChunkId);
 
 		// IoStore 格式字段
 		if (!Container.UtocPath.IsEmpty())
@@ -1112,18 +1061,30 @@ TArray<FHotUpdateResolvedAssetInfo> FHotUpdateBaseVersionBuilder::ResolveAssetIn
 	TArray<FHotUpdateResolvedAssetInfo> Result;
 	Result.Reserve(AssetPaths.Num());
 
-	for (const FString& AssetPath : AssetPaths)
+	for (const FString& OriginalAssetPath : AssetPaths)
 	{
-		const FString DiskPath = FHotUpdatePackageHelper::GetAssetDiskPath(AssetPath, CookedPlatformDir);
+		// 检查是否有 Cooked 输出（通用过滤：OFPA 等合并数据无独立 Cooked 文件）
+		FString CookedPath = FHotUpdatePackageHelper::GetCookedAssetPath(OriginalAssetPath, CookedPlatformDir);
+		if (CookedPath.IsEmpty() || !FPaths::FileExists(*CookedPath))
+		{
+			continue;
+		}
 
-		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
+		// 获取源文件路径
+		FString SourcePath = FHotUpdatePackageHelper::GetAssetSourcePath(OriginalAssetPath);
+
+		if (SourcePath.IsEmpty() || !FPaths::FileExists(*SourcePath))
 		{
-			Result.Emplace(AssetPath, DiskPath, CookedPlatformDir);
+			UE_LOG(LogHotUpdateEditor, Warning, TEXT("源文件不存在，跳过: %s"), *OriginalAssetPath);
+			continue;
 		}
-		else
-		{
-			UE_LOG(LogHotUpdateEditor, Verbose, TEXT("资源磁盘路径解析失败: AssetPath=%s, DiskPath=%s"), *AssetPath, DiskPath.IsEmpty() ? TEXT("(empty)") : *DiskPath);
-		}
+
+		// filePath 和 Hash 都使用源文件绝对路径
+		FString AbsolutePath = FPaths::ConvertRelativePathToFull(SourcePath);
+		int64 FileSize = IFileManager::Get().FileSize(*SourcePath);
+		FString FileHash = UHotUpdateFileUtils::CalculateFileHash(SourcePath);
+
+		Result.Emplace(AbsolutePath, FileHash, FileSize);
 	}
 
 	return Result;
@@ -1134,7 +1095,7 @@ bool FHotUpdateBaseVersionBuilder::BuildFileManifestJson(
 	const TSharedPtr<FJsonObject>& VersionObject,
 	const TArray<TSharedPtr<FJsonValue>>& ChunksArray,
 	const TArray<FHotUpdateResolvedAssetInfo>& BaseAssets,
-	const TArray<FHotUpdateResolvedAssetInfo>& PatchAssets) const
+	const TArray<FHotUpdateResolvedAssetInfo>& PatchAssets)
 {
 	const TSharedPtr<FJsonObject> FileManifestObj = MakeShareable(new FJsonObject);
 	FileManifestObj->SetObjectField(TEXT("version"), VersionObject);
@@ -1142,20 +1103,16 @@ bool FHotUpdateBaseVersionBuilder::BuildFileManifestJson(
 
 	// 生成文件条目的通用 lambda（消除基础/热更资源的重复代码）
 	TArray<TSharedPtr<FJsonValue>> FilesArray;
-	auto AddFileEntries = [&FilesArray](const TArray<FHotUpdateResolvedAssetInfo>& Assets, int32 ChunkId, const FString& Source)
+	auto AddFileEntries = [&FilesArray](const TArray<FHotUpdateResolvedAssetInfo>& Assets, const FString& Source)
 	{
 		for (const FHotUpdateResolvedAssetInfo& Info : Assets)
 		{
 			TSharedPtr<FJsonObject> FileObj = MakeShareable(new FJsonObject);
-			FileObj->SetStringField(TEXT("filePath"), Info.FileName);
+			FileObj->SetStringField(TEXT("filePath"), Info.AssetPath);
 
-			FString HashPath = Info.GetHashPath();
-			FileObj->SetNumberField(TEXT("fileSize"), IFileManager::Get().FileSize(*HashPath));
-			FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(HashPath));
+			FileObj->SetNumberField(TEXT("fileSize"), Info.FileSize);
+			FileObj->SetStringField(TEXT("fileHash"), Info.FileHash);
 
-			FileObj->SetNumberField(TEXT("chunkId"), ChunkId);
-			FileObj->SetNumberField(TEXT("priority"), 0);
-			FileObj->SetBoolField(TEXT("isCompressed"), true);
 			FileObj->SetStringField(TEXT("source"), Source);
 
 			FilesArray.Add(MakeShareable(new FJsonValueObject(FileObj)));
@@ -1163,30 +1120,9 @@ bool FHotUpdateBaseVersionBuilder::BuildFileManifestJson(
 	};
 
 	// 基础资源 -> chunk0 base
-	AddFileEntries(BaseAssets, 0, TEXT("base"));
-	// 热更资源 -> 按 CachedChunkMapping 分配实际 ChunkId
-	for (const FHotUpdateResolvedAssetInfo& Info : PatchAssets)
-	{
-		int32 ChunkId = 11;
-		if (const int32* Found = CachedChunkMapping.Find(Info.AssetPath))
-		{
-			ChunkId = *Found;
-		}
-
-		TSharedPtr<FJsonObject> FileObj = MakeShareable(new FJsonObject);
-		FileObj->SetStringField(TEXT("filePath"), Info.FileName);
-
-		FString HashPath = Info.GetHashPath();
-		FileObj->SetNumberField(TEXT("fileSize"), IFileManager::Get().FileSize(*HashPath));
-		FileObj->SetStringField(TEXT("fileHash"), UHotUpdateFileUtils::CalculateFileHash(HashPath));
-
-		FileObj->SetNumberField(TEXT("chunkId"), ChunkId);
-		FileObj->SetNumberField(TEXT("priority"), 0);
-		FileObj->SetBoolField(TEXT("isCompressed"), true);
-		FileObj->SetStringField(TEXT("source"), TEXT("patch"));
-
-		FilesArray.Add(MakeShareable(new FJsonValueObject(FileObj)));
-	}
+	AddFileEntries(BaseAssets, TEXT("base"));
+	// 热更资源
+	AddFileEntries(PatchAssets, TEXT("patch"));
 
 	FileManifestObj->SetArrayField(TEXT("files"), FilesArray);
 
@@ -1195,7 +1131,7 @@ bool FHotUpdateBaseVersionBuilder::BuildFileManifestJson(
 	TSharedRef<TJsonWriter<>> FileWriter = TJsonWriterFactory<>::Create(&FileManifestString);
 	FJsonSerializer::Serialize(FileManifestObj.ToSharedRef(), FileWriter);
 
-	FString FileManifestPath = FPaths::Combine(VersionDir, TEXT("filemanifest.json"));
+	const FString FileManifestPath = FPaths::Combine(VersionDir, TEXT("filemanifest.json"));
 	if (!FFileHelper::SaveStringToFile(FileManifestString, *FileManifestPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
 	{
 		UE_LOG(LogHotUpdateEditor, Error, TEXT("保存 FileManifest 失败: %s"), *FileManifestPath);

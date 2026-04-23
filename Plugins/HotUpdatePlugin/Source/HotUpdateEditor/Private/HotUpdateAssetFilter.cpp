@@ -238,7 +238,7 @@ void FHotUpdateAssetFilter::GetDependenciesRecursive(
 			TArray<FName> HardDeps;
 			TArray<FName> SoftDeps;
 			AssetRegistry->GetDependencies(FName(*AssetPath), HardDeps, Category,
-				UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard | UE::AssetRegistry::EDependencyQuery::Game));
+				UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard));
 			AssetRegistry->GetDependencies(FName(*AssetPath), SoftDeps, Category,
 				UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Soft));
 			Dependencies.Append(HardDeps);
@@ -265,6 +265,11 @@ void FHotUpdateAssetFilter::GetDependenciesRecursive(
 	for (const FName& Dep : Dependencies)
 	{
 		FString DepStr = Dep.ToString();
+
+		if (FPackageName::IsScriptPackage(DepStr) || FPackageName::IsMemoryPackage(DepStr))
+		{
+			continue;
+		}
 
 		// 添加到结果
 		OutDependencies.Add(DepStr);

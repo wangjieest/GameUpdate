@@ -345,25 +345,25 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 
 	if (ManifestPath.IsEmpty())
 	{
-		// 优先从 HotUpdateVersions 目录查找
+		// 优先从 HotUpdateVersions 目录查找 filemanifest.json
 		FString VersionDir = FHotUpdateVersionManager::GetVersionDir(BaseVersion, ParsePlatform(PlatformStr), ParseTextureFormat(TextureFormatStr));
-		ManifestPath = FPaths::Combine(VersionDir, TEXT("manifest.json"));
+		ManifestPath = FPaths::Combine(VersionDir, TEXT("filemanifest.json"));
 
 		if (!FPaths::FileExists(*ManifestPath))
 		{
 			// 回退到 BaseVersionBuilds 目录查找
 			FString BaseVersionDir = FPaths::Combine(FHotUpdateBaseVersionBuilder::GetDefaultOutputDirectory(), BaseVersion);
-			ManifestPath = FPaths::Combine(BaseVersionDir, PlatformName, TEXT("manifest.json"));
+			ManifestPath = FPaths::Combine(BaseVersionDir, PlatformName, TEXT("filemanifest.json"));
 		}
 
 		if (!FPaths::FileExists(*ManifestPath))
 		{
-			UE_LOG(LogHotUpdateCommandlet, Error, TEXT("未找到基础版本 Manifest"));
-			UE_LOG(LogHotUpdateCommandlet, Error, TEXT("请使用 -manifest 参数指定 Manifest 路径"));
+			UE_LOG(LogHotUpdateCommandlet, Error, TEXT("未找到基础版本 filemanifest.json"));
+			UE_LOG(LogHotUpdateCommandlet, Error, TEXT("请使用 -manifest 参数指定 filemanifest.json 路径"));
 			return 1;
 		}
 
-		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("自动找到 Manifest: %s"), *ManifestPath);
+		UE_LOG(LogHotUpdateCommandlet, Log, TEXT("自动找到 filemanifest: %s"), *ManifestPath);
 	}
 
 	// 构建配置
@@ -371,7 +371,7 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 	Config.PatchVersion = Version;
 	Config.BaseVersion = BaseVersion;
 	Config.Platform = ParsePlatform(PlatformStr);
-	Config.BaseManifestPath.FilePath = ManifestPath;
+	Config.BaseFileManifestPath.FilePath = ManifestPath;
 	Config.bSkipCook = bSkipCook;
 	Config.bIncrementalCook = bIncrementalCook;
 	Config.bSkipBuild = bSkipBuild;
@@ -384,7 +384,7 @@ int32 UHotUpdateCommandlet::ExecutePatchPackage()
 	}
 	else
 	{
-		Config.OutputDirectory.Path = FPaths::ProjectSavedDir() / TEXT("HotUpdatePatches");
+		Config.OutputDirectory.Path = FPaths::ProjectSavedDir() / TEXT("HotUpdateVersions");
 	}
 
 	// 配置全量热更新模式

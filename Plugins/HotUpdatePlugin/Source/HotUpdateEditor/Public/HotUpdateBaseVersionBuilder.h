@@ -148,9 +148,17 @@ private:
 	FString ResolvePlatformOutputDir() const;
 
 	/**
-	 * 收集 IoStore 容器文件信息（.utoc/.ucas）
+	 * 收集指定目录下的 IoStore/Pak 容器文件信息
+	 * @param SearchDir 搜索目录
+	 * @param BaseDir 基准目录（用于计算相对路径）
+	 * @param ContainerType 容器类型（Base/Patch）
+	 * @param OutContainerInfos 输出容器信息数组
 	 */
-	static TArray<FHotUpdateContainerInfo> CollectContainerInfos(const FString& PlatformDir, const FString& VersionDir);
+	static void CollectContainerFiles(
+		const FString& SearchDir,
+		const FString& BaseDir,
+		EHotUpdateContainerType ContainerType,
+		TArray<FHotUpdateContainerInfo>& OutContainerInfos);
 
 	/**
 	 * 生成并保存 manifest.json
@@ -171,7 +179,7 @@ private:
 	void PreComputeChunkMapping();
 
 	/**
-	 * 解析资源磁盘路径并构建解析信息（消除 ConvertAssetPathToFileName 的冗余 GetAssetDiskPath 调用）
+	 * 解析资源磁盘路径并构建解析信息（消除 ConvertAssetPathToFileName 的冗余 GetCookedAssetPath 调用）
 	 */
 	static TArray<FHotUpdateResolvedAssetInfo> ResolveAssetInfo(
 		const TArray<FString>& AssetPaths,
@@ -180,12 +188,12 @@ private:
 	/**
 	 * 生成并保存 filemanifest.json（去重基础/热更资源的文件条目生成）
 	 */
-	bool BuildFileManifestJson(
+	static bool BuildFileManifestJson(
 		const FString& VersionDir,
 		const TSharedPtr<FJsonObject>& VersionObject,
 		const TArray<TSharedPtr<FJsonValue>>& ChunksArray,
 		const TArray<FHotUpdateResolvedAssetInfo>& BaseAssets,
-		const TArray<FHotUpdateResolvedAssetInfo>& PatchAssets) const;
+		const TArray<FHotUpdateResolvedAssetInfo>& PatchAssets);
 
 	/**
 	 * 检查打包输出是否存在

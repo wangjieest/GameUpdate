@@ -43,12 +43,6 @@ TSharedRef<SWidget> SHotUpdateDiffTreeItem::GenerateWidgetForColumn(const FName&
 				.ColorAndOpacity(GetColorAndOpacity())
 			];
 	}
-	else if (ColumnName == "Type")
-	{
-		return SNew(STextBlock)
-			.Text(FText::FromString(Item.IsValid() ? Item->DiffInfo.AssetType : TEXT("")))
-			.ColorAndOpacity(FLinearColor::Gray);
-	}
 	else if (ColumnName == "Change")
 	{
 		return SNew(STextBlock)

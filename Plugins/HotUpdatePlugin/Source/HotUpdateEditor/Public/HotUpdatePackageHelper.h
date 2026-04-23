@@ -20,9 +20,10 @@ public:
 
 	/** 增量 Cook 指定资源 */
 	static bool CookAssets(EHotUpdatePlatform Platform, const TArray<FString>& AssetsToCook);
-
-	/** 资源路径 -> Cooked 磁盘路径 */
-	static FString GetAssetDiskPath(const FString& AssetPath, const FString& CookedPlatformDir);
+	
+	
+	/** 资源路径 -> Cooked 文件路径 */
+	static FString GetCookedAssetPath(const FString& AssetPath, const FString& CookedPlatformDir);
 
 	/** 资源路径 -> 源文件路径 */
 	static FString GetAssetSourcePath(const FString& AssetPath);
@@ -32,4 +33,10 @@ public:
 
 	/** 文件名 -> 资源路径（UE Long Package Name 格式） */
 	static FString FileNameToAssetPath(const FString& FileName);
+
+	/** 资源路径 -> Pak 内路径（filemanifest filePath 格式） */
+	static FString AssetPathToPakPath(const FString& AssetPath, const FString& Extension = TEXT(""));
+	
+	/** 获取资源扩展名（从 Cooked 文件推断） */
+	static FString GetAssetExtension(const FString& AssetPath, const FString& CookedPlatformDir);
 };

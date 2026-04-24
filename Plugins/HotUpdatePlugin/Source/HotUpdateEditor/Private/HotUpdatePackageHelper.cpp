@@ -6,6 +6,25 @@
 #include "Misc/MonitoredProcess.h"
 #include "Misc/Paths.h"
 #include "Misc/App.h"
+#include "Misc/StringBuilder.h"
+
+FString FHotUpdatePackageHelper::ConvertAbsolutePathToPakMount(const FString& AbsolutePath, const FString& EngineDir, const FString& ProjectDir)
+{
+	FString NormalizedPath = AbsolutePath;
+	FPaths::NormalizeDirectoryName(NormalizedPath);
+
+	FString RelativePath;
+	if (FPaths::MakePathRelativeTo(NormalizedPath, *EngineDir))
+	{
+		return FString::Printf(TEXT("../../../Engine/%s"), *RelativePath);
+	}
+	else if (FPaths::MakePathRelativeTo(NormalizedPath, *ProjectDir))
+	{
+		return FString::Printf(TEXT("../../../%s/%s"), FApp::GetProjectName(), *RelativePath);
+	}
+
+	return TEXT("");
+}
 
 bool FHotUpdatePackageHelper::CompileProject(EHotUpdatePlatform Platform)
 {
@@ -152,135 +171,102 @@ bool FHotUpdatePackageHelper::CookAssets(EHotUpdatePlatform Platform, const TArr
 	return true;
 }
 
+FString FHotUpdatePackageHelper::GetPluginCookedSubDir(const FString& PluginPath)
+{
+	const FString PluginRelPath = PluginPath.RightChop(7);
+
+	FString EnginePluginDir = FPaths::EnginePluginsDir() / PluginRelPath;
+	FString ProjectPluginDir = FPaths::ProjectPluginsDir() / PluginRelPath;
+
+	FPaths::NormalizeDirectoryName(EnginePluginDir);
+	FPaths::NormalizeDirectoryName(ProjectPluginDir);
+
+	if (FPaths::DirectoryExists(EnginePluginDir))
+	{
+		return TEXT("Engine/") + PluginPath;
+	}
+	else if (FPaths::DirectoryExists(ProjectPluginDir))
+	{
+		return FString(FApp::GetProjectName()) + TEXT("/") + PluginPath;
+	}
+
+	return TEXT("");
+}
+
 FString FHotUpdatePackageHelper::GetCookedAssetPath(const FString& AssetPath, const FString& CookedPlatformDir)
 {
-	if (CookedPlatformDir.IsEmpty())
-	{
-		UE_LOG(LogHotUpdateEditor, Error, TEXT("GetCookedAssetPath: CookedPlatformDir 不能为空"));
-		return TEXT("");
-	}
-
-	// Script 包是原生类，无法解析为文件路径
-	if (FPackageName::IsScriptPackage(AssetPath) || FPackageName::IsMemoryPackage(AssetPath))
+	if (IsExternalAsset(AssetPath))
 	{
 		return TEXT("");
 	}
-
-	FString ResolvedPath;
-	if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, ResolvedPath, FString()))
-	{
-		return TEXT("");
-	}
-
-	// 转换为绝对路径
-	FString AbsolutePath = FPaths::ConvertRelativePathToFull(ResolvedPath);
-	FPaths::NormalizeFilename(AbsolutePath);
 	
-	FString RelativePath;
-
-	// 简化判断：包含 Plugins/ → 插件资源，包含 Engine → 引擎资源，否则 → 项目资源
-	if (AbsolutePath.Contains(TEXT("Plugins/")))
+	if (!IsUAsset(AssetPath))
 	{
-		// 插件资源：查找 Engine 或 Project 目录作为基准
-		const int32 PluginsIdx = AbsolutePath.Find(TEXT("Plugins/"));
-		const int32 EngineIdx = AbsolutePath.Find(TEXT("Engine/"));
-		const FString ProjectName = FApp::GetProjectName();
-		const int32 ProjectIdx = AbsolutePath.Find(ProjectName + TEXT("/"));
-
-		if (EngineIdx != INDEX_NONE && EngineIdx < PluginsIdx)
-		{
-			// 引擎插件：Engine/Plugins/...
-			RelativePath = AbsolutePath.Mid(EngineIdx);
-		}
-		else if (ProjectIdx != INDEX_NONE && ProjectIdx < PluginsIdx)
-		{
-			// 项目插件：{ProjectName}/Plugins/...
-			RelativePath = ProjectName / AbsolutePath.Mid(ProjectIdx + ProjectName.Len() + 1);
-		}
-		else
-		{
-			// 无法确定归属，保留 Plugins 前路径
-			int32 PrefixEnd = PluginsIdx;
-			while (PrefixEnd > 0 && AbsolutePath[PrefixEnd - 1] != '/') PrefixEnd--;
-			RelativePath = AbsolutePath.Mid(PrefixEnd);
-		}
+		return TEXT("");
 	}
-	else if (AbsolutePath.Contains(TEXT("Engine/")))
+
+	TStringBuilder<256> PackageNameRoot, FilePathRoot, RelPath;
+	if (!FPackageName::TryGetMountPointForPath(AssetPath, PackageNameRoot, FilePathRoot, RelPath))
 	{
-		// 引擎资源（非插件）
-		const int32 EngineIdx = AbsolutePath.Find(TEXT("Engine/"));
-		RelativePath = AbsolutePath.Mid(EngineIdx);
+		UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetCookedAssetPath: TryGetMountPointForPath 失败: %s"), *AssetPath);
+		return TEXT("");
 	}
-	else
+
+	FString FilePathRootStr = FString(FilePathRoot);
+	FString SubDir;
+	
+	if (FilePathRootStr.Contains(TEXT("Plugins/")))
 	{
-		// 项目资源
-		const FString ProjectName = FApp::GetProjectName();
-		const int32 ProjectIdx = AbsolutePath.Find(ProjectName + TEXT("/"));
-		if (ProjectIdx != INDEX_NONE)
-			RelativePath = AbsolutePath.Mid(ProjectIdx);
-		else
+		// 插件路径：提取 "Plugins/..." 部分
+		const int32 PluginsIdx = FilePathRootStr.Find(TEXT("Plugins/"));
+		FString PluginPath = FilePathRootStr.Mid(PluginsIdx);
+		SubDir = GetPluginCookedSubDir(PluginPath);
+		if (SubDir.IsEmpty())
 		{
-			UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetCookedAssetPath: 无法识别项目路径 %s"), *AssetPath);
+			UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetCookedAssetPath: 插件目录不存在: %s"), *PluginPath);
 			return TEXT("");
 		}
 	}
 
-	FString CookedMapPath = FPaths::Combine(CookedPlatformDir, RelativePath + TEXT(".umap"));
-	if (FPaths::FileExists(*CookedMapPath))
-		return CookedMapPath;
+	const FString CookedPath = FPaths::Combine(CookedPlatformDir, PackageNameRoot);
 
-	FString CookedAssetPath = FPaths::Combine(CookedPlatformDir, RelativePath + TEXT(".uasset"));
-	if (FPaths::FileExists(*CookedAssetPath))
-		return CookedAssetPath;
-
+	FString UmapPath = CookedPath + TEXT(".umap");
+	if (FPaths::FileExists(UmapPath))
+	{
+		return UmapPath;
+	}
+	FString UassetPath = CookedPath + TEXT(".uasset");
+	if (FPaths::FileExists(UassetPath))
+	{
+		return UassetPath;
+	}
+	
+	UE_LOG(LogHotUpdateEditor, Warning, TEXT("GetCookedAssetPath: 文件不存在: %s"), *CookedPath);
 	return TEXT("");
 }
 
 FString FHotUpdatePackageHelper::GetAssetSourcePath(const FString& AssetPath)
 {
-	FString ResolvedPath;
-	if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, ResolvedPath, TEXT("")))
+	if (!IsUAsset(AssetPath))
 	{
+		return AssetPath;
+	}
+	FString Filename;
+	if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, Filename))
+	{
+		UE_LOG(LogHotUpdateEditor, Display, TEXT("GetAssetSourcePath FAILED TryConvertLongPackageNameToFilename : %s"), *AssetPath);
 		return TEXT("");
 	}
 
-	const FString AbsolutePath = FPaths::ConvertRelativePathToFull(ResolvedPath);
+	const FString AbsolutePath = FPaths::ConvertRelativePathToFull(Filename);
 
 	if (FPaths::FileExists(AbsolutePath + TEXT(".umap")))
 		return AbsolutePath + TEXT(".umap");
 	if (FPaths::FileExists(AbsolutePath + TEXT(".uasset")))
 		return AbsolutePath + TEXT(".uasset");
 
+	UE_LOG(LogHotUpdateEditor, Display, TEXT("GetAssetSourcePath FAILED: %s"), *AssetPath);
 	return TEXT("");
-}
-
-FString FHotUpdatePackageHelper::ConvertAssetPathToFileName(const FString& AssetPath, const FString& CookedPlatformDir)
-{
-	// Script 包是原生类，没有对应的文件
-	if (FPackageName::IsScriptPackage(AssetPath))
-	{
-		return TEXT("");
-	}
-
-	// 使用 GetCookedAssetPath 获取实际 Cooked 文件路径
-	const FString DiskPath = GetCookedAssetPath(AssetPath, CookedPlatformDir);
-	if (DiskPath.IsEmpty())
-	{
-		return TEXT("");
-	}
-
-	// 从 Cooked 文件路径提取 RelativePath（去掉 CookedPlatformDir）
-	FString RelativePath;
-	if (DiskPath.StartsWith(CookedPlatformDir))
-	{
-		RelativePath = DiskPath.Mid(CookedPlatformDir.Len());
-	}
-	else
-	{
-		RelativePath = DiskPath;
-	}
-
-	return RelativePath;
 }
 
 FString FHotUpdatePackageHelper::FileNameToAssetPath(const FString& FileName)
@@ -307,54 +293,93 @@ FString FHotUpdatePackageHelper::FileNameToAssetPath(const FString& FileName)
 		UE_LOG(LogHotUpdateEditor, Display, TEXT("FileNameToAssetPath: %s -> %s"), *FileName, *LongPackageName);
 		return LongPackageName;
 	}
-	
+
 	UE_LOG(LogHotUpdateEditor, Display, TEXT("TryConvertFilenameToLongPackageName FAILED: %s"), *Result);
 	return Result;
 }
 
-FString FHotUpdatePackageHelper::AssetPathToPakPath(const FString& AssetPath, const FString& Extension)
+FString FHotUpdatePackageHelper::GetAssetPakMountPath(const FString& AssetPath)
 {
-	FString Result = AssetPath;
-
-	// 添加扩展名
-	if (!Extension.IsEmpty() && !Result.EndsWith(Extension))
-	{
-		Result += Extension;
-	}
-
-	// /Game/xxx -> /{ProjectName}/Content/xxx
-	if (Result.StartsWith(TEXT("/Game/")))
-	{
-		Result = TEXT("/") + FString(FApp::GetProjectName()) + TEXT("/Content/") + Result.RightChop(6);
-	}
-	// /Engine/xxx -> /Engine/Content/xxx（引擎原生资源）
-	else if (Result.StartsWith(TEXT("/Engine/")) && !Result.StartsWith(TEXT("/Engine/Plugins/")))
-	{
-		Result = TEXT("/Engine/Content/") + Result.RightChop(8);
-	}
-	// /{Plugin}/xxx -> /Engine/Plugins/{Plugin}/Content/xxx（插件资源，非标准路径）
-	else if (!Result.StartsWith(TEXT("/Game/")) && !Result.StartsWith(TEXT("/Engine/")) && !Result.StartsWith(TEXT("/Script/")))
-	{
-		// 提取插件名（第一个路径段）
-		int32 FirstSlash = Result.Find(TEXT("/"), ESearchCase::IgnoreCase, ESearchDir::FromStart, 1);
-		if (FirstSlash != INDEX_NONE)
-		{
-			FString PluginName = Result.Mid(1, FirstSlash - 1);
-			FString RestPath = Result.RightChop(FirstSlash);
-			Result = TEXT("/Engine/Plugins/") + PluginName + TEXT("/Content") + RestPath;
-		}
-	}
-
-	return Result;
-}
-
-
-FString FHotUpdatePackageHelper::GetAssetExtension(const FString& AssetPath, const FString& CookedPlatformDir)
-{
-	FString CookedPath = GetCookedAssetPath(AssetPath, CookedPlatformDir);
-	if (CookedPath.IsEmpty())
+	TStringBuilder<256> PackageNameRoot, FilePathRoot, RelPath;
+	if (!FPackageName::TryGetMountPointForPath(AssetPath, PackageNameRoot, FilePathRoot, RelPath))
 	{
 		return TEXT("");
 	}
-	return FPaths::GetExtension(CookedPath);
+
+	FString FilePathRootStr = FString(FilePathRoot);
+	FString RootStr = FString(PackageNameRoot);
+
+	// 检查是否为绝对路径
+	if (FilePathRootStr.Contains(TEXT(":/")) || FilePathRootStr.Contains(TEXT(":\\")))
+	{
+		// 绝对路径：使用辅助函数转换为 Pak 挂载格式
+		FString EngineDir = FPaths::EngineDir();
+		FString ProjectDir = FPaths::ProjectDir();
+		FPaths::NormalizeDirectoryName(EngineDir);
+		FPaths::NormalizeDirectoryName(ProjectDir);
+
+		FilePathRootStr = ConvertAbsolutePathToPakMount(FilePathRootStr, EngineDir, ProjectDir);
+		if (FilePathRootStr.IsEmpty())
+		{
+			return TEXT("");
+		}
+	}
+	else if (!FilePathRootStr.StartsWith(TEXT("../../../")))
+	{
+		// 非标准相对路径格式：根据 PackageNameRoot 推导标准 Pak 格式
+		if (RootStr == TEXT("/Game/"))
+		{
+			FilePathRootStr = FString::Printf(TEXT("../../../%s/Content/"), FApp::GetProjectName());
+		}
+		else if (RootStr == TEXT("/Engine/"))
+		{
+			FilePathRootStr = TEXT("../../../Engine/Content/");
+		}
+	}
+
+	FString Result = FilePathRootStr + FString(RelPath);
+	Result.ReplaceCharInline('\\', '/');
+	return Result;
+}
+
+bool FHotUpdatePackageHelper::IsUAsset(const FString& AssetPath)
+{
+	FString Extension = TEXT("");
+	if (AssetPath.Contains(TEXT(".")))
+	{
+		FPaths::GetExtension(AssetPath);
+	}else{
+		FString Filename;
+		if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, Filename))
+		{
+			return false;
+		}
+		const FString AbsolutePath = FPaths::ConvertRelativePathToFull(Filename);
+		if (FPaths::FileExists(AbsolutePath + TEXT(".umap")))
+		{
+			Extension = TEXT("umap");
+		}else if (FPaths::FileExists(AbsolutePath + TEXT(".uasset")))
+		{
+			Extension = TEXT("umap");
+		}
+	}
+	
+	if (Extension == TEXT("umap") || Extension == TEXT("uasset"))
+	{
+		return true;
+	}
+	return false;
+}
+
+bool FHotUpdatePackageHelper::IsExternalAsset(const FString& AssetPath)
+{
+	if (FPackageName::IsScriptPackage(AssetPath) || FPackageName::IsMemoryPackage(AssetPath))
+	{
+		return true;
+	}
+	if (AssetPath.Contains(FPackagePath::GetExternalActorsFolderName()) || AssetPath.Contains(FPackagePath::GetExternalObjectsFolderName()))
+	{
+		return true;
+	}
+	return false;
 }

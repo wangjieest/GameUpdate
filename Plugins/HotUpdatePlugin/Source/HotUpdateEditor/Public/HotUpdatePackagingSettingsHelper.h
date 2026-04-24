@@ -5,21 +5,6 @@
 
 class UProjectPackagingSettings;
 
-/**
- * Staged 文件信息（非 UE 资产，如 DirectoriesToAlwaysStageAsUFS 中的文件）
- */
-struct HOTUPDATEEDITOR_API FHotUpdateStagedFileInfo
-{
-	/// Pak 内路径（如 Game/Setting/txt_pak.txt），用于 filemanifest.json 的 filePath
-	FString PakPath;
-
-	/// 源文件磁盘路径（如 D:/Project/Content/Setting/txt_pak.txt），用于 Hash 计算
-	FString SourcePath;
-
-	FHotUpdateStagedFileInfo() = default;
-	FHotUpdateStagedFileInfo(const FString& InPakPath, const FString& InSourcePath)
-		: PakPath(InPakPath), SourcePath(InSourcePath) {}
-};
 
 /**
  * 项目打包配置读取结果
@@ -30,7 +15,7 @@ struct HOTUPDATEEDITOR_API FHotUpdatePackagingSettingsResult
 	TArray<FString> AssetPaths;
 
 	/// Staged 文件列表（非 UE 资产）
-	TArray<FHotUpdateStagedFileInfo> StagedFiles;
+	TArray<FString> NonAssetPaths;
 
 	/// 错误信息
 	TArray<FString> Errors;
@@ -104,9 +89,9 @@ private:
 
 	/**
 	 * 收集 DirectoriesToAlwaysStageAsUFS 中的非资产文件（打包到 pak 内部）
-	 * @param OutStagedFiles 输出的 Staged 文件列表（包含 PakPath 和 SourcePath）
+	 * @param OutStagedFiles 输出的 Staged 文件列表
 	 */
-	static void CollectStagedFilesAsUFS(TArray<FHotUpdateStagedFileInfo>& OutStagedFiles);
+	static void CollectStagedFilesAsUFS(TArray<FString>& OutStagedFiles);
 
 	/**
 	 * 从单个目录收集非资产文件
@@ -115,5 +100,5 @@ private:
 	 */
 	static void CollectStagedFilesFromDirectory(
 		const FDirectoryPath& DirPath,
-		TArray<FHotUpdateStagedFileInfo>& OutStagedFiles);
+		TArray<FString>& OutStagedFiles);
 };

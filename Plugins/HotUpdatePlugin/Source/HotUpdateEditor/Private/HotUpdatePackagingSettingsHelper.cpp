@@ -3,6 +3,7 @@
 #include "HotUpdatePackagingSettingsHelper.h"
 #include "HotUpdateEditor.h"
 #include "HotUpdateAssetFilter.h"
+#include "HotUpdatePackageHelper.h"
 #include "Settings/ProjectPackagingSettings.h"
 #include "Misc/Paths.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -45,7 +46,7 @@ FHotUpdatePackagingSettingsResult FHotUpdatePackagingSettingsHelper::ParsePackag
 	Result.AssetPaths.Append(AlwaysCookAssets);
 
 	// 3. 收集 DirectoriesToAlwaysStageAsUFS 中的非资产文件
-	CollectStagedFilesAsUFS(Result.StagedFiles);
+	CollectStagedFilesAsUFS(Result.NonAssetPaths);
 
 	// 4. 过滤 NeverCook 目录
 	int32 RemovedCount = 0;
@@ -78,7 +79,14 @@ FHotUpdatePackagingSettingsResult FHotUpdatePackagingSettingsHelper::ParsePackag
 		{
 			FHotUpdateAssetFilter::GetDependencies(AssetPath, AssetRegistry, EHotUpdateDependencyStrategy::IncludeAll, AllPaths);
 		}
-		Result.AssetPaths = AllPaths.Array();
+
+		for (auto& Each : AllPaths)
+		{
+			if (!FHotUpdatePackageHelper::IsExternalAsset(Each))
+			{
+				Result.AssetPaths.Add(Each);
+			}
+		}
 	}
 
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("解析项目打包配置完成: %d 个资源"), Result.AssetPaths.Num());
@@ -257,7 +265,7 @@ public:
 	}
 };
 
-void FHotUpdatePackagingSettingsHelper::CollectStagedFilesAsUFS(TArray<FHotUpdateStagedFileInfo>& OutStagedFiles)
+void FHotUpdatePackagingSettingsHelper::CollectStagedFilesAsUFS(TArray<FString>& OutStagedFiles)
 {
 	UProjectPackagingSettings* Settings = GetPackagingSettings();
 	if (!Settings)
@@ -270,7 +278,7 @@ void FHotUpdatePackagingSettingsHelper::CollectStagedFilesAsUFS(TArray<FHotUpdat
 	}
 }
 
-void FHotUpdatePackagingSettingsHelper::CollectStagedFilesFromDirectory(const FDirectoryPath& DirPath, TArray<FHotUpdateStagedFileInfo>& OutStagedFiles)
+void FHotUpdatePackagingSettingsHelper::CollectStagedFilesFromDirectory(const FDirectoryPath& DirPath, TArray<FString>& OutStagedFiles)
 {
 	if (DirPath.Path.IsEmpty())
 	{
@@ -297,10 +305,6 @@ void FHotUpdatePackagingSettingsHelper::CollectStagedFilesFromDirectory(const FD
 		FString PakPath = File;
 		FPaths::MakePathRelativeTo(PakPath, *ContentDir);
 		PakPath = TEXT("/") + FString(FApp::GetProjectName()) / TEXT("Content") / PakPath;
-
-		// SourcePath: 源文件完整路径，用于 Hash 计算
-		FString SourcePath = File;
-
-		OutStagedFiles.Add(FHotUpdateStagedFileInfo(PakPath, SourcePath));
+		OutStagedFiles.Add(File);
 	}
 }

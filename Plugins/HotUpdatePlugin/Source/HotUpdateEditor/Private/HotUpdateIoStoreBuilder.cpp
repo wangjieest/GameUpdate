@@ -2,6 +2,7 @@
 
 #include "HotUpdateIoStoreBuilder.h"
 #include "HotUpdateEditor.h"
+#include "HotUpdatePackageHelper.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -15,7 +16,7 @@ FHotUpdateIoStoreBuilder::FHotUpdateIoStoreBuilder()
 }
 
 FHotUpdateIoStoreResult FHotUpdateIoStoreBuilder::BuildIoStoreContainer(
-	const TMap<FString, FString>& AssetPathToDiskPath,
+	const TArray<FString>& AssetPathToDiskPath,
 	const FString& OutputPath,
 	const FHotUpdateIoStoreConfig& Config)
 {
@@ -46,62 +47,6 @@ FHotUpdateIoStoreResult FHotUpdateIoStoreBuilder::BuildIoStoreContainer(
 	bIsBuilding = false;
 
 	return Result;
-}
-
-void FHotUpdateIoStoreBuilder::BuildIoStoreContainerAsync(
-	const TMap<FString, FString>& AssetPathToDiskPath,
-	const FString& OutputPath,
-	const FHotUpdateIoStoreConfig& Config)
-{
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("BuildIoStoreContainerAsync 开始调用"));
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("  bIsBuilding: %s"), bIsBuilding ? TEXT("true") : TEXT("false"));
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("  BuildTask.IsValid(): %s"), BuildTask.IsValid() ? TEXT("true") : TEXT("false"));
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("  BuildTask.IsReady(): %s"), BuildTask.IsReady() ? TEXT("true") : TEXT("false"));
-
-	if (bIsBuilding)
-	{
-		if (BuildTask.IsValid() && !BuildTask.IsReady())
-		{
-			UE_LOG(LogHotUpdateEditor, Warning, TEXT("已有构建任务正在运行，拒绝新的构建请求"));
-			FHotUpdateIoStoreResult Result;
-			Result.bSuccess = false;
-			Result.ErrorMessage = TEXT("已有构建任务正在进行中");
-			OnComplete.Broadcast(Result);
-			return;
-		}
-		else
-		{
-			UE_LOG(LogHotUpdateEditor, Warning, TEXT("检测到之前的构建异常终止，正在重置构建状态"));
-			bIsBuilding = false;
-			bIsCancelled = false;
-		}
-	}
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("开始新的构建任务，输出路径: %s"), *OutputPath);
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("资源文件数: %d"), AssetPathToDiskPath.Num());
-
-	bIsBuilding = true;
-	bIsCancelled = false;
-
-	BuildTask = Async(EAsyncExecution::Thread, [WeakBuilder = TWeakPtr<FHotUpdateIoStoreBuilder>(AsShared()), AssetPathToDiskPath, OutputPath, Config]()
-	{
-		TSharedPtr<FHotUpdateIoStoreBuilder> Self = WeakBuilder.Pin();
-		if (!Self.IsValid()) return;
-		FHotUpdateIoStoreResult Result;
-		bool bSuccess = Self->CreateIoStoreWithUnrealPak(AssetPathToDiskPath, OutputPath, Config, Result);
-
-		Result.bSuccess = bSuccess;
-		Result.FileCount = AssetPathToDiskPath.Num();
-
-		Self->bIsBuilding = false;
-
-		AsyncTask(ENamedThreads::GameThread, [WeakBuilder, Result]()
-		{
-			TSharedPtr<FHotUpdateIoStoreBuilder> PinnedBuilder = WeakBuilder.Pin();
-			if (!PinnedBuilder.IsValid()) return;
-			PinnedBuilder->OnComplete.Broadcast(Result);
-		});
-	});
 }
 
 void FHotUpdateIoStoreBuilder::CancelBuild()
@@ -136,7 +81,7 @@ bool FHotUpdateIoStoreBuilder::ValidateConfig(const FHotUpdateIoStoreConfig& Con
 }
 
 bool FHotUpdateIoStoreBuilder::CreateIoStoreWithUnrealPak(
-	const TMap<FString, FString>& AssetPathToDiskPath,
+	const TArray<FString>& AssetPathToDiskPath,
 	const FString& OutputPath,
 	const FHotUpdateIoStoreConfig& Config,
 	FHotUpdateIoStoreResult& OutResult)
@@ -250,137 +195,8 @@ bool FHotUpdateIoStoreBuilder::PrepareTempDirectory(
 	return true;
 }
 
-FString FHotUpdateIoStoreBuilder::DetermineAssetExtension(FString& InOutPakPath, const FString& DiskPath)
-{
-	// 路径已有扩展名
-	FString PathExt = FPaths::GetExtension(InOutPakPath);
-	if (!PathExt.IsEmpty())
-	{
-		// UE 资源扩展名：剥离后返回
-		if (PathExt == TEXT("uasset") || PathExt == TEXT("umap") ||
-			PathExt == TEXT("uexp") || PathExt == TEXT("ubulk") || PathExt == TEXT("ubulk2"))
-		{
-			InOutPakPath = FPaths::GetBaseFilename(InOutPakPath);
-			return PathExt;
-		}
-		// 非 UE 扩展名：保留原始路径，不追加扩展名
-		return TEXT("");
-	}
-
-	// 无扩展名：从 DiskPath 获取
-	if (!DiskPath.IsEmpty())
-	{
-		return FPaths::GetExtension(DiskPath);
-	}
-
-	// 无法确定扩展名
-	return TEXT("");
-}
-
-FString FHotUpdateIoStoreBuilder::MapToPakMountPath(const FString& PakPath)
-{
-	const FString ProjectName = FApp::GetProjectName();
-
-	// 判断是否为绝对路径（Staged 文件的源文件路径）
-	bool bIsAbsolutePath = PakPath.Contains(TEXT(":/")) || PakPath.Contains(TEXT(":\\"));
-
-	FString AbsolutePath;
-	if (bIsAbsolutePath)
-	{
-		// 绝对路径：直接使用，跳过虚拟路径解析
-		AbsolutePath = PakPath;
-		FPaths::NormalizeDirectoryName(AbsolutePath);
-	}
-	else
-	{
-		// 虚拟路径：解析为实际路径
-		FString ResolvedPath;
-		FPackageName::TryConvertLongPackageNameToFilename(PakPath, ResolvedPath, TEXT(""));
-		FPaths::NormalizeDirectoryName(ResolvedPath);
-
-		// 转换为绝对路径
-		if (FPaths::IsRelative(ResolvedPath))
-		{
-			FString EngineDir = FPaths::EngineDir();
-			FPaths::NormalizeDirectoryName(EngineDir);
-			AbsolutePath = FPaths::ConvertRelativePathToFull(EngineDir, ResolvedPath);
-			FPaths::NormalizeDirectoryName(AbsolutePath);
-		}
-		else
-		{
-			AbsolutePath = ResolvedPath;
-		}
-	}
-
-	// 获取标准化的目录路径用于比较
-	FString EngineDir = FPaths::EngineDir();
-	FPaths::NormalizeDirectoryName(EngineDir);
-
-	FString ProjectDir = FPaths::ProjectDir();
-	FPaths::NormalizeDirectoryName(ProjectDir);
-
-	// 判断归属
-	// 引擎目录下的文件（含引擎插件）
-	if (AbsolutePath.StartsWith(EngineDir))
-	{
-		FString RelativePath = AbsolutePath.RightChop(EngineDir.Len());
-		return FString::Printf(TEXT("../../../Engine/%s"), *RelativePath);
-	}
-
-	// 项目目录下的文件（含项目插件）
-	if (AbsolutePath.StartsWith(ProjectDir))
-	{
-		FString RelativePath = AbsolutePath.RightChop(ProjectDir.Len());
-		return FString::Printf(TEXT("../../../%s/%s"), *ProjectName, *RelativePath);
-	}
-
-	UE_LOG(LogHotUpdateEditor, Warning, TEXT("MapToPakMountPath: 无法识别路径归属 %s (AbsolutePath=%s)"), *PakPath, *AbsolutePath);
-	return TEXT("");
-}
-
-FString FHotUpdateIoStoreBuilder::GetPakInternalPath(const FString& AssetPath, const FString& DiskPath)
-{
-	// 从 AssetPath（如 "/Game/Maps/Start"）转换为 Pak 内部路径（Dest 路径）
-	// UE5 标准 pak 的 Dest 路径格式: ../../../{ProjectName}/Content/...
-	// 这样 GetCommonRootPath 会计算出 mount point 为 "../../../"
-	// 与标准基础 pak 的 mount point 一致，运行时才能正确匹配文件路径
-
-	FString PakPath = AssetPath;
-
-	// 处理绝对路径（Staged 文件的源文件路径）
-	// 绝对路径格式：E:/... 或 D:/...，不需要添加 / 前缀
-	bool bIsAbsolutePath = PakPath.Contains(TEXT(":/")) || PakPath.Contains(TEXT(":\\"));
-	if (!bIsAbsolutePath)
-	{
-		// 确保路径以 / 开头（标准 UE 长包名格式）
-		if (!PakPath.StartsWith(TEXT("/")))
-		{
-			PakPath = TEXT("/") + PakPath;
-		}
-	}
-
-	// 步骤1：确定文件扩展名（可能剥离路径中已有的 UE 扩展名）
-	const FString Extension = DetermineAssetExtension(PakPath, DiskPath);
-
-	// 步骤2：挂载点映射
-	PakPath = MapToPakMountPath(PakPath);
-
-	// 步骤3：追加扩展名
-	if (!Extension.IsEmpty())
-	{
-		PakPath += TEXT(".") + Extension;
-	}
-
-	// 确保使用正斜杠
-	PakPath.ReplaceCharInline('\\', '/');
-
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("AssetPath -> PakPath: %s -> %s"), *AssetPath, *PakPath);
-
-	return PakPath;
-}
-
 bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
-	const TMap<FString, FString>& AssetPathToDiskPath,
+	const TArray<FString>& AssetPathToDiskPath,
 	const FString& ResponseFilePath,
 	const FString& CompressionFormat,
 	int32& OutValidFileCount,
@@ -397,7 +213,7 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 	UpdateProgress(TEXT("准备资源"), TEXT(""), 0, TotalAssets, 0, 0);
 
 	int32 Index = 0;
-	for (const TPair<FString, FString>& Pair : AssetPathToDiskPath)
+	for (const FString& AssetPath : AssetPathToDiskPath)
 	{
 		if (bIsCancelled)
 		{
@@ -405,8 +221,7 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 			return false;
 		}
 
-		const FString& AssetPath = Pair.Key;
-		const FString& DiskPath = Pair.Value;
+		const FString& DiskPath = FHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
 
 		if (!PlatformFile.FileExists(*DiskPath))
 		{
@@ -415,7 +230,7 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 		}
 
 		// 使用 AssetPath 和 DiskPath 计算 Pak 内部路径
-		FString PakInternalPath = GetPakInternalPath(AssetPath, DiskPath);
+		FString PakInternalPath = FHotUpdatePackageHelper::GetAssetPakMountPath(AssetPath);
 
 		// 源路径使用正斜杠
 		FString UnixDiskPath = DiskPath;

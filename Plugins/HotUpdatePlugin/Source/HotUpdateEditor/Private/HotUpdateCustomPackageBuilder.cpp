@@ -153,42 +153,15 @@ FHotUpdateCustomPackageResult FHotUpdateCustomPackageBuilder::ExecuteBuild(const
 
 	// 构建合并的 AssetDiskPaths 映射
 	TArray<FString> ValidAssetPaths;
-	TMap<FString, FString> AssetDiskPaths;
-	TMap<FString, FString> AssetSourcePaths;
+	TArray<FString> ValidNonAssetPaths;
 
 	// uasset 文件：磁盘路径已经可用
 	FString CookedPlatformDir = HotUpdateUtils::GetCookedPlatformDir(Config.Platform);
 	for (const FString& UassetPath : Config.UAssetFilePaths)
 	{
-		// 尝试使用 Cook 后路径
-		FString PackageName = ResolveDiskPathToPackageName(UassetPath);
-		FString DiskPath;
-
-		if (!PackageName.IsEmpty())
+		if (FPaths::FileExists(*UassetPath))
 		{
-			DiskPath = FHotUpdatePackageHelper::GetCookedAssetPath(PackageName, CookedPlatformDir);
-		}
-
-		// 如果 Cook 后路径不存在，尝试使用用户提供的路径
-		if (DiskPath.IsEmpty() || !FPaths::FileExists(*DiskPath))
-		{
-			if (FPaths::FileExists(*UassetPath))
-			{
-				DiskPath = UassetPath;
-			}
-		}
-
-		if (!DiskPath.IsEmpty() && FPaths::FileExists(*DiskPath))
-		{
-			FString Key = !PackageName.IsEmpty() ? PackageName : UassetPath;
-			ValidAssetPaths.Add(Key);
-			AssetDiskPaths.Add(Key, DiskPath);
-
-			FString SourcePath = FHotUpdatePackageHelper::GetAssetSourcePath(Key);
-			if (!SourcePath.IsEmpty())
-			{
-				AssetSourcePaths.Add(Key, SourcePath);
-			}
+			ValidAssetPaths.Add(UassetPath);
 		}
 		else
 		{
@@ -201,9 +174,7 @@ FHotUpdateCustomPackageResult FHotUpdateCustomPackageBuilder::ExecuteBuild(const
 	{
 		if (FPaths::FileExists(*NonAssetPath))
 		{
-			FString PakPath = DetermineNonAssetPakPath(NonAssetPath);
-			ValidAssetPaths.Add(PakPath);
-			AssetDiskPaths.Add(PakPath, NonAssetPath);
+			ValidNonAssetPaths.Add(NonAssetPath);
 		}
 		else
 		{
@@ -213,7 +184,7 @@ FHotUpdateCustomPackageResult FHotUpdateCustomPackageBuilder::ExecuteBuild(const
 
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("自定义打包: 有效资源 %d 个"), ValidAssetPaths.Num());
 
-	if (ValidAssetPaths.Num() == 0)
+	if (ValidAssetPaths.Num() == 0 && ValidNonAssetPaths.Num() == 0)
 	{
 		Result.bSuccess = false;
 		Result.ErrorMessage = TEXT("没有找到可打包的资源（Cook 后无有效文件）");
@@ -226,8 +197,12 @@ FHotUpdateCustomPackageResult FHotUpdateCustomPackageBuilder::ExecuteBuild(const
 
 	TMap<FString, FString> AssetHashes;
 	TMap<FString, int64> AssetSizes;
+	
+	TArray<FString> AllAssets;
+	AllAssets.Append(ValidAssetPaths);
+	AllAssets.Append(ValidNonAssetPaths);
 
-	for (int32 i = 0; i < ValidAssetPaths.Num(); i++)
+	for (int32 i = 0; i < AllAssets.Num(); i++)
 	{
 		if (bIsCancelled)
 		{
@@ -237,17 +212,18 @@ FHotUpdateCustomPackageResult FHotUpdateCustomPackageBuilder::ExecuteBuild(const
 			return Result;
 		}
 
-		const FString& AssetPath = ValidAssetPaths[i];
-		const FString* DiskPath = AssetDiskPaths.Find(AssetPath);
-		const FString* SourcePath = AssetSourcePaths.Find(AssetPath);
-
-		FString HashPath = (SourcePath && FPaths::FileExists(**SourcePath)) ? *SourcePath
-			: (DiskPath && FPaths::FileExists(**DiskPath)) ? *DiskPath : TEXT("");
-
-		if (!HashPath.IsEmpty())
+		const FString& AssetPath = AllAssets[i];
+		const FString SourcePath = FHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
+		if (!FPaths::FileExists(*SourcePath))
 		{
-			AssetHashes.Add(AssetPath, UHotUpdateFileUtils::CalculateFileHash(HashPath));
-			AssetSizes.Add(AssetPath, IFileManager::Get().FileSize(*HashPath));
+			UE_LOG(LogHotUpdateEditor, Warning, TEXT("自定义打包: 跳过不存在的文件: %s->%s"), *AssetPath, *SourcePath);
+			continue;
+		}
+		
+		if (!SourcePath.IsEmpty())
+		{
+			AssetHashes.Add(AssetPath, UHotUpdateFileUtils::CalculateFileHash(SourcePath));
+			AssetSizes.Add(AssetPath, IFileManager::Get().FileSize(*SourcePath));
 		}
 		UpdateProgress(TEXT("计算资源 Hash"), AssetPath, i + 1, ValidAssetPaths.Num());
 	}
@@ -272,7 +248,7 @@ FHotUpdateCustomPackageResult FHotUpdateCustomPackageBuilder::ExecuteBuild(const
 	// 创建 IoStore 容器
 	UpdateProgress(TEXT("创建打包容器"), TEXT(""), 0, ValidAssetPaths.Num());
 
-	if (AssetDiskPaths.Num() > 0)
+	if (AllAssets.Num() > 0)
 	{
 		FHotUpdateIoStoreBuilder IoStoreBuilder;
 
@@ -286,8 +262,7 @@ FHotUpdateCustomPackageResult FHotUpdateCustomPackageBuilder::ExecuteBuild(const
 
 		FString PatchOutputPath = FPaths::Combine(PaksDir, IoStoreConfig.ContainerName);
 
-		FHotUpdateIoStoreResult IoStoreResult = IoStoreBuilder.BuildIoStoreContainer(
-			AssetDiskPaths, PatchOutputPath, IoStoreConfig);
+		FHotUpdateIoStoreResult IoStoreResult = IoStoreBuilder.BuildIoStoreContainer(AllAssets, PatchOutputPath, IoStoreConfig);
 
 		if (!IoStoreResult.bSuccess)
 		{

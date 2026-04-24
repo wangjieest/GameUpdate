@@ -60,15 +60,7 @@ public:
 	 * @return 构建结果
 	 */
 	FHotUpdateIoStoreResult BuildIoStoreContainer(
-		const TMap<FString, FString>& AssetPathToDiskPath,
-		const FString& OutputPath,
-		const FHotUpdateIoStoreConfig& Config);
-
-	/**
-	 * 异步构建 IoStore 容器
-	 */
-	void BuildIoStoreContainerAsync(
-		const TMap<FString, FString>& AssetPathToDiskPath,
+		const TArray<FString>& AssetPathToDiskPath,
 		const FString& OutputPath,
 		const FHotUpdateIoStoreConfig& Config);
 
@@ -103,7 +95,7 @@ private:
 	 * 使用 UnrealPak 创建 IoStore 格式容器
 	 */
 	bool CreateIoStoreWithUnrealPak(
-		const TMap<FString, FString>& AssetPathToDiskPath,
+		const TArray<FString>& AssetPathToDiskPath,
 		const FString& OutputPath,
 		const FHotUpdateIoStoreConfig& Config,
 		FHotUpdateIoStoreResult& OutResult);
@@ -126,39 +118,12 @@ private:
 	static bool PrepareTempDirectory(
 		const FString& TempDir,
 		FString& OutErrorMessage);
-
-	/**
-	 * 从 AssetPath 获取 Pak 内部路径
-	 * @param AssetPath UE 包路径（如 "/Game/Maps/Start"）
-	 * @param DiskPath
-	 * @return Pak 内部路径（如 "/Game/Maps/Start.umap"）
-	 */
-	static FString GetPakInternalPath(const FString& AssetPath, const FString& DiskPath = TEXT(""));
-
-	/**
-	 * 确定资源文件的扩展名
-	 * 如果路径已有 UE 扩展名（.uasset/.umap/.uexp/.ubulk/.ubulk2），会从路径中剥离
-	 * @param InOutPakPath 包路径（输入/输出），已有 UE 扩展名时会被剥离
-	 * @param DiskPath 磁盘路径（用于回退获取扩展名）
-	 * @return 应追加的扩展名（不含点号，空表示不追加）
-	 */
-	static FString DetermineAssetExtension(FString& InOutPakPath, const FString& DiskPath);
-
-	/**
-	 * 将虚拟包路径映射为 Pak 内部挂载路径
-	 * /Game/... -> ../../../{ProjectName}/Content/...
-	 * /Engine/... -> ../../../Engine/Content/...
-	 * 插件路径 -> 根据 FPackageName 解析结果映射
-	 * @param PakPath 虚拟包路径（不含扩展名，以 / 开头）
-	 * @return Pak 内部 Dest 路径（不含扩展名）
-	 */
-	static FString MapToPakMountPath(const FString& PakPath);
 	
 	/**
 	 * 生成响应文件
 	 */
 	bool GenerateResponseFile(
-		const TMap<FString, FString>& AssetPathToDiskPath,
+		const TArray<FString>& AssetPathToDiskPath,
 		const FString& ResponseFilePath,
 		const FString& CompressionFormat,
 		int32& OutValidFileCount,

@@ -62,7 +62,7 @@ struct HOTUPDATEEDITOR_API FHotUpdateBaseVersionBuildConfig
 	TArray<FString> PreCollectedPatchAssetPaths;
 
 	/// 预收集的 Staged 文件列表（非 UE 资产）
-	TArray<FHotUpdateStagedFileInfo> PreCollectedStagedFiles;
+	TArray<FString> PreCollectedNonAssetFiles;
 
 	FHotUpdateBaseVersionBuildConfig()
 		: Platform(EHotUpdatePlatform::Windows)

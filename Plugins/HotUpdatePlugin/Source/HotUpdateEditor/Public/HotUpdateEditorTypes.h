@@ -520,11 +520,11 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FullPackage")
 	FDirectoryPath BaseContainerDirectory;
 
-	/// 预收集的完整资源列表（含依赖，由游戏线程填充，后台线程直接使用）
-	TArray<FString> PreCollectedAssetPaths;
+	/// 预收集的完整资源列表
+	TArray<FString> AssetPaths;
 
 	/// 预收集的非 UE 资源列表（Staged 文件）
-	TArray<FString> PreCollectedNonAssetPaths;
+	TArray<FString> NonAssetPaths;
 
 	bool bSynchronousMode;
 

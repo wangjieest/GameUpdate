@@ -185,10 +185,10 @@ void FHotUpdateBaseVersionBuilder::BuildBaseVersion(const FHotUpdateBaseVersionB
 
 		CurrentConfig.PreCollectedPatchAssetPaths = PatchAssetPaths;
 		CachedWhitelistAssetPaths = WhitelistAssetPaths;
-		CurrentConfig.PreCollectedStagedFiles = PackagingResult.StagedFiles;
+		CurrentConfig.PreCollectedNonAssetFiles = PackagingResult.NonAssetPaths;
 
 		UE_LOG(LogHotUpdateEditor, Log, TEXT("预收集完成，首包资源: %d 个，热更资源: %d 个，Staged 文件: %d 个"),
-			WhitelistAssetPaths.Num(), PatchAssetPaths.Num(), PackagingResult.StagedFiles.Num());
+			WhitelistAssetPaths.Num(), PatchAssetPaths.Num(), PackagingResult.NonAssetPaths.Num());
 	}
 
 	if (CurrentConfig.bSynchronousMode)
@@ -838,20 +838,19 @@ bool FHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 		BaseAssets = ResolveAssetInfo(CachedWhitelistAssetPaths, CookedPlatformDir);
 		PatchAssets = ResolveAssetInfo(CurrentConfig.PreCollectedPatchAssetPaths, CookedPlatformDir);
 
-			// 处理预收集的 Staged 文件
-		for (const FHotUpdateStagedFileInfo& StagedFile : CurrentConfig.PreCollectedStagedFiles)
+		// 处理预收集的 Staged 文件
+		for (const FString& StagedFile : CurrentConfig.PreCollectedNonAssetFiles)
 		{
-			if (FPaths::FileExists(*StagedFile.SourcePath))
+			if (FPaths::FileExists(*StagedFile))
 			{
-				int64 FileSize = IFileManager::Get().FileSize(*StagedFile.SourcePath);
-				FString FileHash = UHotUpdateFileUtils::CalculateFileHash(StagedFile.SourcePath);
-				// Staged 文件：使用源文件绝对路径作为 filePath
-				FString AbsolutePath = FPaths::ConvertRelativePathToFull(StagedFile.SourcePath);
+				int64 FileSize = IFileManager::Get().FileSize(*StagedFile);
+				FString FileHash = UHotUpdateFileUtils::CalculateFileHash(StagedFile);
+				FString AbsolutePath = FPaths::ConvertRelativePathToFull(StagedFile);
 				BaseAssets.Add(FHotUpdateResolvedAssetInfo(AbsolutePath, FileHash, FileSize));
 			}
 			else
 			{
-				UE_LOG(LogHotUpdateEditor, Warning, TEXT("Staged 文件不存在: %s"), *StagedFile.SourcePath);
+				UE_LOG(LogHotUpdateEditor, Warning, TEXT("Staged 文件不存在: %s"), *StagedFile);
 			}
 		}
 	}
@@ -861,19 +860,18 @@ bool FHotUpdateBaseVersionBuilder::SaveResourceHashesInGameThread()
 		FHotUpdatePackagingSettingsResult PackagingResult = FHotUpdatePackagingSettingsHelper::ParsePackagingSettings(true);
 		BaseAssets = ResolveAssetInfo(PackagingResult.AssetPaths, CookedPlatformDir);
 		// 处理 Staged 文件（非 UE 资产）
-		for (const FHotUpdateStagedFileInfo& StagedFile : PackagingResult.StagedFiles)
+		for (const FString& StagedFile : PackagingResult.NonAssetPaths)
 		{
-			if (FPaths::FileExists(*StagedFile.SourcePath))
+			if (FPaths::FileExists(*StagedFile))
 			{
-				int64 FileSize = IFileManager::Get().FileSize(*StagedFile.SourcePath);
-				FString FileHash = UHotUpdateFileUtils::CalculateFileHash(StagedFile.SourcePath);
-				// Staged 文件：使用源文件绝对路径作为 filePath
-				FString AbsolutePath = FPaths::ConvertRelativePathToFull(StagedFile.SourcePath);
+				int64 FileSize = IFileManager::Get().FileSize(*StagedFile);
+				FString FileHash = UHotUpdateFileUtils::CalculateFileHash(StagedFile);
+				FString AbsolutePath = FPaths::ConvertRelativePathToFull(StagedFile);
 				BaseAssets.Add(FHotUpdateResolvedAssetInfo(AbsolutePath, FileHash, FileSize));
 			}
 			else
 			{
-				UE_LOG(LogHotUpdateEditor, Warning, TEXT("Staged 文件不存在: %s"), *StagedFile.SourcePath);
+				UE_LOG(LogHotUpdateEditor, Warning, TEXT("Staged 文件不存在: %s"), *StagedFile);
 			}
 		}
 	}
@@ -1063,13 +1061,6 @@ TArray<FHotUpdateResolvedAssetInfo> FHotUpdateBaseVersionBuilder::ResolveAssetIn
 
 	for (const FString& OriginalAssetPath : AssetPaths)
 	{
-		// 检查是否有 Cooked 输出（通用过滤：OFPA 等合并数据无独立 Cooked 文件）
-		FString CookedPath = FHotUpdatePackageHelper::GetCookedAssetPath(OriginalAssetPath, CookedPlatformDir);
-		if (CookedPath.IsEmpty() || !FPaths::FileExists(*CookedPath))
-		{
-			continue;
-		}
-
 		// 获取源文件路径
 		FString SourcePath = FHotUpdatePackageHelper::GetAssetSourcePath(OriginalAssetPath);
 

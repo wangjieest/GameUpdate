@@ -1,6 +1,8 @@
 // Copyright czm. All Rights Reserved.
 
 #include "HotUpdateAssetFilter.h"
+
+#include "HotUpdatePackageHelper.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/AssetData.h"
 

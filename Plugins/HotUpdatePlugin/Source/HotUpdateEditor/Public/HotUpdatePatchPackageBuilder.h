@@ -39,11 +39,7 @@ public:
 
 private:
 	/** 收集资源 */
-	bool CollectAssets(
-		TArray<FString>& OutAssetPaths,
-		TMap<FString, FString>& OutAssetDiskPaths,
-		TMap<FString, FString>& OutAssetSourcePaths,
-		FString& OutErrorMessage) const;
+	bool CollectAssets(FString& OutErrorMessage);
 
 	/** 加载基础版本 FileManifest */
 	static bool LoadBaseFileManifest(

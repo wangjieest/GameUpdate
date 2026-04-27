@@ -488,7 +488,7 @@ struct HOTUPDATEEDITOR_API FHotUpdatePatchPackageConfig
 
 	/// 是否启用增量 Cook 模式
 	/// 启用后只 Cook 有变更的资源（基于 Diff 结果），而非全量 Cook
-	/// 使用 -PACKAGE + -cooksinglepackage 只 Cook 指定资源，大幅减少 Cook 时间
+	/// 使用 -PACKAGE 只 Cook 指定资源，大幅减少 Cook 时间
 	/// 需要先有上次 Cook 的输出文件作为 Diff 基准
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Packaging")
 	bool bIncrementalCook;

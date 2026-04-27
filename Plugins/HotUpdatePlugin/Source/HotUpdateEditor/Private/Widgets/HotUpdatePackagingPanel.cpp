@@ -452,7 +452,7 @@ TSharedRef<SWidget> SHotUpdatePackagingPanel::CreateBasicSettings()
 			[
 				SAssignNew(IncrementalCookCheckBox, SCheckBox)
 				.IsChecked(ECheckBoxState::Unchecked)
-				.ToolTipText(LOCTEXT("IncrementalCookTooltip", "只 Cook 有变更的资源，大幅减少 Cook 时间。基于 Diff 结果确定变更资源，使用 -PACKAGE + -cooksinglepackage 只 Cook 指定资源。需要已有 Cooked 输出作为基准"))
+				.ToolTipText(LOCTEXT("IncrementalCookTooltip", "只 Cook 有变更的资源，大幅减少 Cook 时间。基于 Diff 结果确定变更资源，使用 -PACKAGE 只 Cook 指定资源。需要已有 Cooked 输出作为基准"))
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT("IncrementalCook", "增量 Cook"))

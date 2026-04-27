@@ -1,4 +1,4 @@
-// Copyright czm. All Rights Reserved.
+﻿// Copyright czm. All Rights Reserved.
 
 #include "HotUpdatePatchPackageBuilder.h"
 #include "HotUpdatePackageHelper.h"
@@ -247,12 +247,34 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	// === 增量 Cook：在 Diff 之后执行 ===
 	if (CurrentConfig.bIncrementalCook && !CurrentConfig.bSkipCook)
 	{
-		// 提取修改资源（有 Cooked 输出，Hash 变了）
-		TArray<FString> AssetsToCook;
-		for (const FHotUpdateAssetDiff& Diff : DiffReport.ModifiedAssets)
-		{
-			AssetsToCook.Add(Diff.AssetPath);
-		}
+			// 提取修改资源（有 Cooked 输出，Hash 变了）
+			// 只添加 UE Package 格式的资产，非资产文件不需要 Cook
+			TArray<FString> AssetsToCook;
+				TSet<FString> AddedAssetsSet;  // 避免重复添加
+				UE_LOG(LogHotUpdateEditor, Display, TEXT("增量 Cook: ModifiedAssets.Num=%d"), DiffReport.ModifiedAssets.Num());
+			for (const FHotUpdateAssetDiff& Diff : DiffReport.ModifiedAssets)
+			{
+				// UE Package 格式：/Game/..., /Engine/..., /Plugin/... 等（以 / 开头）
+				// 非资产文件：磁盘路径格式（如 E:/.../txt_pak.txt）
+				if (FHotUpdatePackageHelper::IsValidPackagePath(Diff.AssetPath))
+				{
+					// 将磁盘路径转换为 Package Name
+					FString PackageName = FHotUpdatePackageHelper::FilePathToLongPackageName(Diff.AssetPath);
+					if (!PackageName.IsEmpty())
+					{
+						if (!AddedAssetsSet.Contains(PackageName))
+						{
+							AssetsToCook.Add(PackageName);
+							AddedAssetsSet.Add(PackageName);
+							UE_LOG(LogHotUpdateEditor, Display, TEXT("增量 Cook: 添加修改资产: %s -> %s"), *Diff.AssetPath, *PackageName);
+						}
+					}
+				}
+				else
+				{
+					UE_LOG(LogHotUpdateEditor, Display, TEXT("增量 Cook: 跳过非资产文件: %s"), *Diff.AssetPath);
+				}
+			}
 		
 		// 不在基础 FileManifest 中的资源 = 新增资源
 		TArray<FString> AllPackagingAssetPaths;
@@ -272,23 +294,39 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 			BaseAssetSet.Add(Pair.Key);
 		}
 
-		for (const FString& AssetPath : AllPackagingAssetPaths)
-		{
-			// 跳过 OFPA 数据
-			if (FHotUpdatePackageHelper::IsExternalAsset(AssetPath))
+			for (const FString& AssetPath : AllPackagingAssetPaths)
 			{
-				continue;
+				// 跳过 OFPA 数据
+				if (FHotUpdatePackageHelper::IsExternalAsset(AssetPath))
+				{
+					continue;
+				}
+
+				// 将 Package Name 转换为磁盘路径后比较
+				// AssetPath 是 Package Name 格式（如 /Game/TopDown/Lvl_TopDown）
+				// BaseAssetSet 存储的是磁盘路径格式（如 E:/.../Lvl_TopDown.umap）
+				FString AssetSourcePath = FHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
+				if (AssetSourcePath.IsEmpty())
+				{
+					// 无法获取源路径，保守处理：视为需要 Cook
+					AssetsToCook.Add(AssetPath);
+					UE_LOG(LogHotUpdateEditor, Warning, TEXT("增量 Cook: 无法获取源路径，视为新增: %s"), *AssetPath);
+					continue;
+				}
+
+				// 不在基础 Manifest 中 = 新增资源
+				if (!BaseAssetSet.Contains(AssetSourcePath))
+				{
+					if (!AddedAssetsSet.Contains(AssetPath))
+					{
+						AssetsToCook.Add(AssetPath);
+						AddedAssetsSet.Add(AssetPath);
+						UE_LOG(LogHotUpdateEditor, Display, TEXT("增量 Cook: 发现新增资源: %s"), *AssetPath);
+					}
+				}
 			}
 
-			// 不在基础 Manifest 中 = 新增资源
-			if (!BaseAssetSet.Contains(AssetPath))
-			{
-				AssetsToCook.Add(AssetPath);
-				UE_LOG(LogHotUpdateEditor, Log, TEXT("增量 Cook: 发现新增资源: %s"), *AssetPath);
-			}
-		}
-
-		UE_LOG(LogHotUpdateEditor, Log, TEXT("增量 Cook: 需要 Cook %d 个资源 (修改 %d + 新增)"), AssetsToCook.Num(), DiffReport.ModifiedAssets.Num());
+		UE_LOG(LogHotUpdateEditor, Display, TEXT("增量 Cook: 需要 Cook %d 个资源 (修改 %d + 新增)"), AssetsToCook.Num(), DiffReport.ModifiedAssets.Num());
 
 		if (AssetsToCook.Num() > 0)
 		{

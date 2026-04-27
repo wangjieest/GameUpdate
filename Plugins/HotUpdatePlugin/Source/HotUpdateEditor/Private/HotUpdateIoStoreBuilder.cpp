@@ -231,8 +231,25 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 			return false;
 		}
 
-		// 区分 UE 资产和 Non-asset 文件
-		bool bIsUAsset = FHotUpdatePackageHelper::IsUAsset(AssetPath);
+		// 内联 IsUAsset 检查：区分 UE 资产和 Non-asset 文件
+		FString Extension = FPaths::GetExtension(AssetPath);
+		bool bIsUAsset = false;
+		if (Extension.IsEmpty())
+		{
+			// 无扩展名时，尝试通过 FPackageName 判断
+			FString Filename;
+			if (FPackageName::TryConvertLongPackageNameToFilename(AssetPath, Filename))
+			{
+				FString AbsolutePath = FPaths::ConvertRelativePathToFull(Filename);
+				bIsUAsset = FPaths::FileExists(AbsolutePath + TEXT(".umap")) ||
+							FPaths::FileExists(AbsolutePath + TEXT(".uasset"));
+			}
+		}
+		else
+		{
+			bIsUAsset = (Extension == TEXT("umap") || Extension == TEXT("uasset"));
+		}
+
 		FString DiskPath;
 
 		if (bIsUAsset && !CookedPlatformDir.IsEmpty())
@@ -303,10 +320,10 @@ bool FHotUpdateIoStoreBuilder::GenerateResponseFile(
 		// 例如：/Game/Maps/Start -> ../../../GameUpdate/Content/Maps/Start.umap
 		if (bIsUAsset && !DiskPath.IsEmpty())
 		{
-			FString Extension = FPaths::GetExtension(DiskPath);
-			if (!Extension.IsEmpty() && !PakInternalPath.EndsWith(Extension))
+			FString DiskExtension = FPaths::GetExtension(DiskPath);
+			if (!DiskExtension.IsEmpty() && !PakInternalPath.EndsWith(DiskExtension))
 			{
-				PakInternalPath += TEXT(".") + Extension;
+				PakInternalPath += TEXT(".") + DiskExtension;
 			}
 		}
 

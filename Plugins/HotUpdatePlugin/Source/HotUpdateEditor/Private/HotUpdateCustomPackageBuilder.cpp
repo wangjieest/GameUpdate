@@ -25,7 +25,7 @@ TArray<FString> FHotUpdateCustomPackageBuilder::ResolveUassetPathsForCook() cons
 
 	for (const FString& UassetFilePath : CurrentConfig.UAssetFilePaths)
 	{
-		FString PackageName = ResolveDiskPathToPackageName(UassetFilePath);
+		FString PackageName = FHotUpdatePackageHelper::FilePathToLongPackageName(UassetFilePath);
 		if (!PackageName.IsEmpty())
 		{
 			AssetPathsToCook.Add(PackageName);
@@ -37,70 +37,6 @@ TArray<FString> FHotUpdateCustomPackageBuilder::ResolveUassetPathsForCook() cons
 	}
 
 	return AssetPathsToCook;
-}
-
-FString FHotUpdateCustomPackageBuilder::ResolveDiskPathToPackageName(const FString& DiskPath)
-{
-	FString NormalizedPath = DiskPath;
-	FPaths::NormalizeFilename(NormalizedPath);
-
-	// 尝试 FPackageName 反向解析
-	FString PackageName;
-	if (FPackageName::TryConvertFilenameToLongPackageName(NormalizedPath, PackageName))
-	{
-		return PackageName;
-	}
-
-	// 回退：手动约定解析
-	FString Normalized = DiskPath;
-	FPaths::NormalizeDirectoryName(Normalized);
-
-	// 项目内容：/Content/ 之后的部分
-	int32 ContentIdx = INDEX_NONE;
-	if ((ContentIdx = Normalized.Find(TEXT("/Content/"), ESearchCase::IgnoreCase)) != INDEX_NONE)
-	{
-		FString AfterContent = Normalized.Mid(ContentIdx + 9); // 跳过 "/Content/"
-		AfterContent.RemoveFromEnd(TEXT(".uasset"));
-		AfterContent.RemoveFromEnd(TEXT(".umap"));
-		return TEXT("/Game/") + AfterContent;
-	}
-
-	// 引擎内容：/Engine/Content/ 之后
-	int32 EngineContentIdx = INDEX_NONE;
-	if ((EngineContentIdx = Normalized.Find(TEXT("/Engine/Content/"), ESearchCase::IgnoreCase)) != INDEX_NONE)
-	{
-		FString AfterContent = Normalized.Mid(EngineContentIdx + 16);
-		AfterContent.RemoveFromEnd(TEXT(".uasset"));
-		AfterContent.RemoveFromEnd(TEXT(".umap"));
-		return TEXT("/Engine/") + AfterContent;
-	}
-
-	return TEXT("");
-}
-
-FString FHotUpdateCustomPackageBuilder::DetermineNonAssetPakPath(const FString& DiskPath)
-{
-	// 使用 /Game/ 前缀使 GetPakInternalPath → MapToPakMountPath 能正确映射
-	FString ProjectDir = FPaths::ProjectDir();
-	FString NormalizedDisk = DiskPath;
-	FPaths::NormalizeFilename(NormalizedDisk);
-	FString NormalizedProject = ProjectDir;
-	FPaths::NormalizeFilename(NormalizedProject);
-
-	if (NormalizedDisk.StartsWith(NormalizedProject))
-	{
-		FString Relative = NormalizedDisk.Mid(NormalizedProject.Len());
-		// 去掉 Content/ 前缀（如果有的话），因为 /Game/ 已经映射到 Content/
-		if (Relative.StartsWith(TEXT("Content/")) || Relative.StartsWith(TEXT("Content\\")))
-		{
-			Relative = Relative.Mid(8); // 跳过 "Content/"
-		}
-		return TEXT("/Game/") + Relative;
-	}
-
-	// 项目外部文件：放在 /Game/ExternalFiles/ 下
-	FString Filename = FPaths::GetCleanFilename(DiskPath);
-	return FString::Printf(TEXT("/Game/ExternalFiles/%s"), *Filename);
 }
 
 FHotUpdateCustomPackageResult FHotUpdateCustomPackageBuilder::ExecuteBuild(const FHotUpdateCustomPackageConfig& Config, const TArray<FString>& AssetPathsToCook)

@@ -13,14 +13,13 @@ FString FHotUpdatePackageHelper::ConvertAbsolutePathToPakMount(const FString& Ab
 	FString NormalizedPath = AbsolutePath;
 	FPaths::NormalizeDirectoryName(NormalizedPath);
 
-	FString RelativePath;
 	if (FPaths::MakePathRelativeTo(NormalizedPath, *EngineDir))
 	{
-		return FString::Printf(TEXT("../../../Engine/%s"), *RelativePath);
+		return FString::Printf(TEXT("../../../Engine/%s"), *NormalizedPath);
 	}
 	else if (FPaths::MakePathRelativeTo(NormalizedPath, *ProjectDir))
 	{
-		return FString::Printf(TEXT("../../../%s/%s"), FApp::GetProjectName(), *RelativePath);
+		return FString::Printf(TEXT("../../../%s/%s"), FApp::GetProjectName(), *NormalizedPath);
 	}
 
 	return TEXT("");
@@ -173,7 +172,9 @@ bool FHotUpdatePackageHelper::CookAssets(EHotUpdatePlatform Platform, const TArr
 
 FString FHotUpdatePackageHelper::GetPluginCookedSubDir(const FString& PluginPath)
 {
-	const FString PluginRelPath = PluginPath.RightChop(7);
+	// "Plugins/" 是 8 个字符，去掉后得到插件相对路径（如 "NNE/NNEDenoiser/Content/"）
+	static constexpr int32 PluginsPrefixLen = 8;
+	const FString PluginRelPath = PluginPath.RightChop(PluginsPrefixLen);
 
 	FString EnginePluginDir = FPaths::EnginePluginsDir() / PluginRelPath;
 	FString ProjectPluginDir = FPaths::ProjectPluginsDir() / PluginRelPath;
@@ -295,32 +296,50 @@ FString FHotUpdatePackageHelper::GetAssetSourcePath(const FString& AssetPath)
 	return TEXT("");
 }
 
-FString FHotUpdatePackageHelper::FileNameToAssetPath(const FString& FileName)
+FString FHotUpdatePackageHelper::FilePathToLongPackageName(const FString& FileName)
 {
 	FString Result = FileName;
 	FPaths::NormalizeFilename(Result);
 
-	// Staged 文件（非 .uasset/.umap）：使用 Pak 路径格式 /{ProjectName}/Content/xxx
-	if (!Result.EndsWith(TEXT(".uasset")) && !Result.EndsWith(TEXT(".umap")))
-	{
-		const FString ProjectContentDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir());
-		if (Result.StartsWith(ProjectContentDir))
-		{
-			FString RelativePath = Result.RightChop(ProjectContentDir.Len());
-			return TEXT("/") + FString(FApp::GetProjectName()) + TEXT("/Content/") + RelativePath;
-		}
-		return Result;
-	}
-
-	// UE 资产：使用引擎标准 API 转换为 Long Package Name
+	// 方式1：UE 标准 API（适用于已注册的 Mount Point）
 	FString LongPackageName;
 	if (FPackageName::TryConvertFilenameToLongPackageName(Result, LongPackageName))
 	{
-		UE_LOG(LogHotUpdateEditor, Display, TEXT("FileNameToAssetPath: %s -> %s"), *FileName, *LongPackageName);
 		return LongPackageName;
 	}
 
-	UE_LOG(LogHotUpdateEditor, Display, TEXT("TryConvertFilenameToLongPackageName FAILED: %s"), *Result);
+	// 方式2：通过 Mount Point 解析（支持引擎、项目、插件路径）
+	TStringBuilder<256> PackageNameRoot, FilePathRoot, RelPath;
+	if (FPackageName::TryGetMountPointForPath(Result, PackageNameRoot, FilePathRoot, RelPath))
+	{
+		FString AssetPath = FString(PackageNameRoot) + FString(RelPath);
+		// 移除扩展名，返回 Long Package Name 格式
+		AssetPath.RemoveFromEnd(TEXT(".uasset"));
+		AssetPath.RemoveFromEnd(TEXT(".umap"));
+		return AssetPath;
+	}
+
+	UE_LOG(LogHotUpdateEditor, Warning, TEXT("FilePathToLongPackageName: 无法解析资产路径: %s"), *Result);
+	return Result;
+}
+
+FString FHotUpdatePackageHelper::FilePathToContentMountPath(const FString& FileName)
+{
+	FString Result = FileName;
+	FPaths::NormalizeFilename(Result);
+
+	// 检查是否在项目 Content 目录下
+	FString ProjectContentDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir());
+	FPaths::NormalizeDirectoryName(ProjectContentDir);
+
+	if (Result.StartsWith(ProjectContentDir))
+	{
+		FString RelativePath = Result.RightChop(ProjectContentDir.Len());
+		// Pak 内部路径格式: /{ProjectName}/Content/{RelativePath}
+		return TEXT("/") + FString(FApp::GetProjectName()) + TEXT("/Content") + RelativePath;
+	}
+
+	UE_LOG(LogHotUpdateEditor, Warning, TEXT("FilePathToContentMountPath: 文件不在 Content 目录: %s"), *Result);
 	return Result;
 }
 
@@ -335,8 +354,8 @@ FString FHotUpdatePackageHelper::GetAssetPakMountPath(const FString& AssetPath)
 	FString FilePathRootStr = FString(FilePathRoot);
 	FString RootStr = FString(PackageNameRoot);
 
-	// 检查是否为绝对路径
-	if (FilePathRootStr.Contains(TEXT(":/")) || FilePathRootStr.Contains(TEXT(":\\")))
+	// 检查是否为绝对路径（Windows: 包含 :/ 或 :\，Linux/Mac: 以 / 开头）
+	if (FilePathRootStr.Contains(TEXT(":/")) || FilePathRootStr.Contains(TEXT(":\\")) || FilePathRootStr.StartsWith(TEXT("/")))
 	{
 		// 绝对路径：使用辅助函数转换为 Pak 挂载格式
 		FString EngineDir = FPaths::EngineDir();
@@ -387,11 +406,10 @@ FString FHotUpdatePackageHelper::GetAssetPakMountPath(const FString& AssetPath)
 
 bool FHotUpdatePackageHelper::IsUAsset(const FString& AssetPath)
 {
-	FString Extension = TEXT("");
-	if (AssetPath.Contains(TEXT(".")))
+	FString Extension = FPaths::GetExtension(AssetPath);
+
+	if (Extension.IsEmpty())
 	{
-		FPaths::GetExtension(AssetPath);
-	}else{
 		FString Filename;
 		if (!FPackageName::TryConvertLongPackageNameToFilename(AssetPath, Filename))
 		{
@@ -401,17 +419,14 @@ bool FHotUpdatePackageHelper::IsUAsset(const FString& AssetPath)
 		if (FPaths::FileExists(AbsolutePath + TEXT(".umap")))
 		{
 			Extension = TEXT("umap");
-		}else if (FPaths::FileExists(AbsolutePath + TEXT(".uasset")))
+		}
+		else if (FPaths::FileExists(AbsolutePath + TEXT(".uasset")))
 		{
-			Extension = TEXT("umap");
+			Extension = TEXT("uasset");
 		}
 	}
 
-	if (Extension == TEXT("umap") || Extension == TEXT("uasset"))
-	{
-		return true;
-	}
-	return false;
+	return Extension == TEXT("umap") || Extension == TEXT("uasset");
 }
 
 bool FHotUpdatePackageHelper::IsExternalAsset(const FString& AssetPath)

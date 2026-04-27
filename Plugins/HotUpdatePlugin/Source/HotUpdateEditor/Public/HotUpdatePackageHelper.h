@@ -43,8 +43,11 @@ public:
 	/** 资源路径 -> 源文件路径 */
 	static FString GetAssetSourcePath(const FString& AssetPath);
 	
-	/** 文件名 -> 资源路径（UE Long Package Name 格式） */
-	static FString FileNameToAssetPath(const FString& FileName);
+	/** 文件路径 -> UE Long Package Name（仅处理 .uasset/.umap） */
+	static FString FilePathToLongPackageName(const FString& FilePath);
+
+	/** 文件路径 -> Content 目录虚拟挂载路径（用于非资产文件如 .txt/.json） */
+	static FString FilePathToContentMountPath(const FString& FilePath);
 	
 	/**
 	 * 将虚拟包路径映射为 Pak 内部挂载路径

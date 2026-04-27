@@ -130,76 +130,131 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 		return Result;
 	}
 	
-	TArray<FString> AllAssetPaths;
-	for (const FString& AssetPath : CurrentConfig.AssetPaths){
-		const FString SourcePath = FHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
-		if (!SourcePath.IsEmpty() && FPaths::FileExists(*SourcePath))
+		// 2. 收集源文件路径（分开处理资产和非资产）
+		TArray<FString> AssetSourcePaths;      // UE 资产源文件路径
+		TArray<FString> NonAssetSourcePaths;   // 非资产源文件路径（如 .txt）
+
+		for (const FString& AssetPath : CurrentConfig.AssetPaths)
 		{
-			FString AbsoluteSourcePath = FPaths::ConvertRelativePathToFull(SourcePath);
-			AllAssetPaths.Add(AbsoluteSourcePath);
-		}else{
-			UE_LOG(LogHotUpdateEditor, Verbose, TEXT("跳过源文件不存在的资源: %s -> %s"), *AssetPath, *SourcePath);
+			const FString SourcePath = FHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
+			if (!SourcePath.IsEmpty() && FPaths::FileExists(*SourcePath))
+			{
+				AssetSourcePaths.Add(FPaths::ConvertRelativePathToFull(SourcePath));
+			}
+			else
+			{
+				UE_LOG(LogHotUpdateEditor, Verbose, TEXT("跳过源文件不存在的资产: %s -> %s"), *AssetPath, *SourcePath);
+			}
 		}
-	}
-	for (const FString& AssetPath : CurrentConfig.NonAssetPaths){
-		const FString SourcePath = FHotUpdatePackageHelper::GetAssetSourcePath(AssetPath);
-		if (!SourcePath.IsEmpty() && FPaths::FileExists(*SourcePath)){
-			FString AbsoluteSourcePath = FPaths::ConvertRelativePathToFull(SourcePath);
-			AllAssetPaths.Add(AbsoluteSourcePath);
-		}else
+
+		for (const FString& FilePath : CurrentConfig.NonAssetPaths)
 		{
-			UE_LOG(LogHotUpdateEditor, Verbose, TEXT("NonAsset 跳过源文件不存在的资源: %s -> %s"), *AssetPath, *SourcePath);
+			if (FPaths::FileExists(*FilePath))
+			{
+				NonAssetSourcePaths.Add(FPaths::ConvertRelativePathToFull(FilePath));
+			}
+			else
+			{
+				UE_LOG(LogHotUpdateEditor, Verbose, TEXT("跳过源文件不存在的非资产文件: %s"), *FilePath);
+			}
 		}
-	}
 
-	// 3. 计算当前资源 Hash
-	UpdateProgress(TEXT("计算资源 Hash"), TEXT(""), 0, AllAssetPaths.Num());
+		// 3. 计算当前资源 Hash（分开计算）
+		TMap<FString, FString> CurrentAssetHashes;      // UE 资产 Hash
+		TMap<FString, FString> CurrentNonAssetHashes;   // 非资产文件 Hash
 
-	TMap<FString, FString> CurrentAssetHashes;
-	TMap<FString, int64> CurrentAssetSizes;
+		// 计算资产 Hash
+		UpdateProgress(TEXT("计算资产 Hash"), TEXT(""), 0, AssetSourcePaths.Num());
+		for (int32 i = 0; i < AssetSourcePaths.Num(); i++)
+		{
+			if (bIsCancelled)
+			{
+				Result.bSuccess = false;
+				Result.ErrorMessage = TEXT("构建已取消");
+				bIsBuilding = false;
+				return Result;
+			}
 
-	for (int32 i = 0; i < AllAssetPaths.Num(); i++)
-	{
-		if (bIsCancelled)
+			const FString& SourcePath = AssetSourcePaths[i];
+			CurrentAssetHashes.Add(SourcePath, UHotUpdateFileUtils::CalculateFileHash(SourcePath));
+			UpdateProgress(TEXT("计算资产 Hash"), SourcePath, i + 1, AssetSourcePaths.Num());
+		}
+
+		// 计算非资产文件 Hash
+		UpdateProgress(TEXT("计算非资产 Hash"), TEXT(""), 0, NonAssetSourcePaths.Num());
+		for (int32 i = 0; i < NonAssetSourcePaths.Num(); i++)
+		{
+			if (bIsCancelled)
+			{
+				Result.bSuccess = false;
+				Result.ErrorMessage = TEXT("构建已取消");
+				bIsBuilding = false;
+				return Result;
+			}
+
+			const FString& SourcePath = NonAssetSourcePaths[i];
+			CurrentNonAssetHashes.Add(SourcePath, UHotUpdateFileUtils::CalculateFileHash(SourcePath));
+			UpdateProgress(TEXT("计算非资产 Hash"), SourcePath, i + 1, NonAssetSourcePaths.Num());
+		}
+
+		// 4. 计算差异（分开处理）
+		UpdateProgress(TEXT("计算差异"), TEXT(""), 0, 0);
+
+		TArray<FString> ChangedAssetPaths;    // 变更的 UE 资产路径
+		TArray<FString> ChangedNonAssetPaths; // 变更的非资产文件路径
+		FHotUpdateDiffReport AssetDiffReport;
+		FHotUpdateDiffReport NonAssetDiffReport;
+
+		// 筛选 BaseAssetHashes：区分资产和非资产
+		TMap<FString, FString> BaseAssetHashesFiltered;
+		TMap<FString, FString> BaseNonAssetHashesFiltered;
+		for (const auto& Pair : BaseAssetHashes)
+		{
+			const FString& Path = Pair.Key;
+			if (Path.EndsWith(TEXT(".uasset")) || Path.EndsWith(TEXT(".umap")))
+			{
+				BaseAssetHashesFiltered.Add(Path, Pair.Value);
+			}
+			else
+			{
+				BaseNonAssetHashesFiltered.Add(Path, Pair.Value);
+			}
+		}
+
+		// 计算 UE 资产差异
+		if (!ComputeDiff(AssetSourcePaths, CurrentAssetHashes, BaseAssetHashesFiltered, ChangedAssetPaths, AssetDiffReport))
 		{
 			Result.bSuccess = false;
-			Result.ErrorMessage = TEXT("构建已取消");
+			Result.ErrorMessage = TEXT("计算资产差异失败");
 			bIsBuilding = false;
 			return Result;
 		}
 
-		const FString& SourcePath = AllAssetPaths[i];
-		
-		if (!FPaths::FileExists(*SourcePath))
+		// 计算非资产文件差异
+		if (!ComputeDiff(NonAssetSourcePaths, CurrentNonAssetHashes, BaseNonAssetHashesFiltered, ChangedNonAssetPaths, NonAssetDiffReport))
 		{
-			UE_LOG(LogHotUpdateEditor, Warning, TEXT("Asset: 文件不存在: %s"), *SourcePath);
-			continue;
+			Result.bSuccess = false;
+			Result.ErrorMessage = TEXT("计算非资产差异失败");
+			bIsBuilding = false;
+			return Result;
 		}
-		
-		CurrentAssetHashes.Add(SourcePath, UHotUpdateFileUtils::CalculateFileHash(SourcePath));
-		CurrentAssetSizes.Add(SourcePath, IFileManager::Get().FileSize(*SourcePath));
-		UpdateProgress(TEXT("计算资源 Hash"), SourcePath, i + 1, AllAssetPaths.Num());
-	}
 
-	// 4. 计算差异
-	UpdateProgress(TEXT("计算差异"), TEXT(""), 0, 0);
+		// 合并 DiffReport（用于日志和后续处理）
+		FHotUpdateDiffReport DiffReport;
+		DiffReport.BaseVersion = CurrentConfig.BaseVersion;
+		DiffReport.TargetVersion = CurrentConfig.PatchVersion;
+		DiffReport.AddedAssets = AssetDiffReport.AddedAssets;
+		DiffReport.AddedAssets.Append(NonAssetDiffReport.AddedAssets);
+		DiffReport.ModifiedAssets = AssetDiffReport.ModifiedAssets;
+		DiffReport.ModifiedAssets.Append(NonAssetDiffReport.ModifiedAssets);
+		DiffReport.DeletedAssets = AssetDiffReport.DeletedAssets;
+		DiffReport.DeletedAssets.Append(NonAssetDiffReport.DeletedAssets);
+		DiffReport.UnchangedAssets = AssetDiffReport.UnchangedAssets;
+		DiffReport.UnchangedAssets.Append(NonAssetDiffReport.UnchangedAssets);
 
-	TArray<FString> ChangedAssets;
-	FHotUpdateDiffReport DiffReport;
-
-	if (!ComputeDiff(AllAssetPaths, CurrentAssetHashes, BaseAssetHashes, ChangedAssets, DiffReport))
-	{
-		Result.bSuccess = false;
-		Result.ErrorMessage = TEXT("计算差异失败");
-		bIsBuilding = false;
-		return Result;
-	}
-
-	DiffReport.BaseVersion = CurrentConfig.BaseVersion;
-	DiffReport.TargetVersion = CurrentConfig.PatchVersion;
-
-	UE_LOG(LogHotUpdateEditor, Display, TEXT("差异: 新增 %d, 修改 %d, 删除 %d, 未变更 %d"), DiffReport.AddedAssets.Num(), DiffReport.ModifiedAssets.Num(), DiffReport.DeletedAssets.Num(), DiffReport.UnchangedAssets.Num());
-
+		UE_LOG(LogHotUpdateEditor, Display, TEXT("差异: 资产(新增 %d, 修改 %d), 非资产(新增 %d, 修改 %d)"), 
+			AssetDiffReport.AddedAssets.Num(), AssetDiffReport.ModifiedAssets.Num(),
+			NonAssetDiffReport.AddedAssets.Num(), NonAssetDiffReport.ModifiedAssets.Num());
 	
 	
 	// 增量模式：只打包变更的资源（新增 + 修改）
@@ -273,7 +328,7 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	UE_LOG(LogHotUpdateEditor, Log, TEXT("增量模式: 变更资源 (新增 %d + 修改 %d)"), DiffReport.AddedAssets.Num(), DiffReport.ModifiedAssets.Num());
 
 	// 检查是否有变更
-	bool bHasChanges = ChangedAssets.Num() > 0;
+	bool bHasChanges = (ChangedAssetPaths.Num() + ChangedNonAssetPaths.Num()) > 0;
 
 	if (!bHasChanges)
 	{
@@ -301,19 +356,19 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	Result.PatchVersion = CurrentConfig.PatchVersion;
 	Result.BaseVersion = ActualBaseVersion;
 	Result.DiffReport = DiffReport;
-	Result.ChangedAssetCount = ChangedAssets.Num();
+	Result.ChangedAssetCount = (ChangedAssetPaths.Num() + ChangedNonAssetPaths.Num());
 	Result.bRequiresBasePackage = true; // 默认需要基础包，全量热更新模式会在后面设置为 false
 
 	// 6. 创建 Patch IoStore 容器
 	// 全量热更新模式：即使没有变更，也需要复制基础容器
 	// 增量模式：没有变更资源则跳过 Patch 容器创建
-	UpdateProgress(TEXT("创建 Patch 容器"), TEXT(""), 0, ChangedAssets.Num());
+	UpdateProgress(TEXT("创建 Patch 容器"), TEXT(""), 0, (ChangedAssetPaths.Num() + ChangedNonAssetPaths.Num()));
 
 	FString PatchUtocPath;
 	FString PatchUcasPath;
 	int64 PatchSize = 0;
 
-	if (ChangedAssets.Num() > 0)
+	if ((ChangedAssetPaths.Num() + ChangedNonAssetPaths.Num()) > 0)
 	{
 		FHotUpdateIoStoreBuilder IoStoreBuilder;
 
@@ -327,20 +382,36 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 
 		FString PatchOutputPath = FPaths::Combine(PaksDir, IoStoreConfig.ContainerName);
 
-		// 将绝对路径转换为虚拟包路径（供 IoStoreBuilder 使用）
-		// ChangedAssets 来自 ComputeDiff，使用源文件绝对路径格式
-		// BuildIoStoreContainer 需要虚拟包路径格式（如 /Game/Maps/Start）
+		// 将绝对路径转换为虚拟包路径（分开处理）
+		// UE 资产：调用 FilePathToLongPackageName（返回 Long Package Name）
+		// 非资产：调用 FilePathToContentMountPath（返回 Pak 内部路径）
 		TArray<FString> VirtualPackagePaths;
-		for (const FString& AbsolutePath : ChangedAssets)
+
+		// 转换 UE 资产路径
+		for (const FString& AbsolutePath : ChangedAssetPaths)
 		{
-			FString VirtualPath = FHotUpdatePackageHelper::FileNameToAssetPath(AbsolutePath);
+			FString VirtualPath = FHotUpdatePackageHelper::FilePathToLongPackageName(AbsolutePath);
 			if (!VirtualPath.IsEmpty())
 			{
 				VirtualPackagePaths.Add(VirtualPath);
 			}
 			else
 			{
-				UE_LOG(LogHotUpdateEditor, Warning, TEXT("无法转换路径: %s"), *AbsolutePath);
+				UE_LOG(LogHotUpdateEditor, Warning, TEXT("无法转换资产路径: %s"), *AbsolutePath);
+			}
+		}
+
+		// 转换非资产文件路径
+		for (const FString& AbsolutePath : ChangedNonAssetPaths)
+		{
+			FString VirtualPath = FHotUpdatePackageHelper::FilePathToContentMountPath(AbsolutePath);
+			if (!VirtualPath.IsEmpty())
+			{
+				VirtualPackagePaths.Add(VirtualPath);
+			}
+			else
+			{
+				UE_LOG(LogHotUpdateEditor, Warning, TEXT("无法转换非资产路径: %s"), *AbsolutePath);
 			}
 		}
 
@@ -500,7 +571,12 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 
 	FString ManifestPath = FPaths::Combine(OutputDir, TEXT("manifest.json"));
 
-	if (!GenerateManifest(ManifestPath, Result.PatchUtocPath, Result.PatchUcasPath, {}, {}, BaseAssetHashes, BaseAssetSizes, DiffReport, BaseContainers, BaseContainerFilesHash, BaseContainerFilesSize))
+	// 合并变更路径（资产 + 非资产）
+	TArray<FString> AllChangedPaths;
+	AllChangedPaths.Append(ChangedAssetPaths);
+	AllChangedPaths.Append(ChangedNonAssetPaths);
+
+	if (!GenerateManifest(ManifestPath, Result.PatchUtocPath, Result.PatchUcasPath, AllChangedPaths, {}, BaseAssetHashes, BaseAssetSizes, DiffReport, BaseContainers, BaseContainerFilesHash, BaseContainerFilesSize))
 	{
 		Result.bSuccess = false;
 		Result.ErrorMessage = TEXT("生成 Manifest 失败");
@@ -523,7 +599,7 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 	VersionInfo.CreatedTime = FDateTime::Now();
 	VersionInfo.FileManifestPath = FPaths::Combine(OutputDir, TEXT("filemanifest.json"));
 	VersionInfo.UtocPath = Result.PatchUtocPath;
-	VersionInfo.AssetCount = AllAssetPaths.Num();
+	VersionInfo.AssetCount = DiffReport.AddedAssets.Num() + DiffReport.ModifiedAssets.Num() + DiffReport.UnchangedAssets.Num();
 	VersionInfo.PackageSize = Result.bIncludesBaseContainers ? Result.TotalDownloadSize : Result.PatchSize;
 
 	VersionManager.RegisterVersion(VersionInfo);
@@ -535,7 +611,7 @@ FHotUpdatePatchPackageResult FHotUpdatePatchPackageBuilder::BuildPatchPackage(co
 
 	UpdateProgress(TEXT("完成"), TEXT(""), 1, 1);
 
-	UE_LOG(LogHotUpdateEditor, Log, TEXT("更新包构建成功: %s, 变更 %d 个资源, 大小 %lld 字节"), *OutputDir, ChangedAssets.Num(), Result.PatchSize);
+	UE_LOG(LogHotUpdateEditor, Log, TEXT("更新包构建成功: %s, 变更 %d 个资源, 大小 %lld 字节"), *OutputDir, (ChangedAssetPaths.Num() + ChangedNonAssetPaths.Num()), Result.PatchSize);
 
 	return Result;
 }
@@ -1245,7 +1321,16 @@ bool FHotUpdatePatchPackageBuilder::LoadBaseContainers(
 			FString Hash = FileObj->GetStringField(TEXT("fileHash"));
 			int64 Size = (int64)FileObj->GetNumberField(TEXT("fileSize"));
 
-			FString NormalizedPath = FHotUpdatePackageHelper::FileNameToAssetPath(FilePath);
+				// 根据文件类型选择不同的路径转换函数
+				FString NormalizedPath;
+				if (FilePath.EndsWith(TEXT(".uasset")) || FilePath.EndsWith(TEXT(".umap")))
+				{
+					NormalizedPath = FHotUpdatePackageHelper::FilePathToLongPackageName(FilePath);
+				}
+				else
+				{
+					NormalizedPath = FHotUpdatePackageHelper::FilePathToContentMountPath(FilePath);
+				}
 
 			// 检查 source 字段，只添加 base 资源
 			FString Source = TEXT("base");

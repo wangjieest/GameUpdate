@@ -15,11 +15,13 @@ FString FHotUpdatePackageHelper::ConvertAbsolutePathToPakMount(const FString& Ab
 
 	if (FPaths::MakePathRelativeTo(NormalizedPath, *EngineDir))
 	{
-		return FString::Printf(TEXT("../../../Engine/%s"), *NormalizedPath);
+		// 确保返回路径末尾有斜杠，用于后续路径拼接
+		return FString::Printf(TEXT("../../../Engine/%s/"), *NormalizedPath);
 	}
 	else if (FPaths::MakePathRelativeTo(NormalizedPath, *ProjectDir))
 	{
-		return FString::Printf(TEXT("../../../%s/%s"), FApp::GetProjectName(), *NormalizedPath);
+		// 确保返回路径末尾有斜杠，用于后续路径拼接
+		return FString::Printf(TEXT("../../../%s/%s/"), FApp::GetProjectName(), *NormalizedPath);
 	}
 
 	return TEXT("");
@@ -335,12 +337,18 @@ FString FHotUpdatePackageHelper::FilePathToContentMountPath(const FString& FileN
 	if (Result.StartsWith(ProjectContentDir))
 	{
 		FString RelativePath = Result.RightChop(ProjectContentDir.Len());
-		// Pak 内部路径格式: /{ProjectName}/Content/{RelativePath}
-		return TEXT("/") + FString(FApp::GetProjectName()) + TEXT("/Content") + RelativePath;
+		// 返回虚拟路径格式: /Game/{RelativePath}
+		// 与 UE 资产的 Long Package Name 格式一致（不含扩展名）
+		// IoStoreBuilder 会使用 GetAssetPakMountPath 转换为 Pak 内部路径
+		FString VirtualPath = TEXT("/Game") + RelativePath;
+		// 移除扩展名（如果存在）
+		VirtualPath.RemoveFromEnd(TEXT(".uasset"));
+		VirtualPath.RemoveFromEnd(TEXT(".umap"));
+		return VirtualPath;
 	}
 
 	UE_LOG(LogHotUpdateEditor, Warning, TEXT("FilePathToContentMountPath: 文件不在 Content 目录: %s"), *Result);
-	return Result;
+	return TEXT("");
 }
 
 FString FHotUpdatePackageHelper::GetAssetPakMountPath(const FString& AssetPath)
@@ -354,31 +362,37 @@ FString FHotUpdatePackageHelper::GetAssetPakMountPath(const FString& AssetPath)
 	FString FilePathRootStr = FString(FilePathRoot);
 	FString RootStr = FString(PackageNameRoot);
 
-	// 检查是否为绝对路径（Windows: 包含 :/ 或 :\，Linux/Mac: 以 / 开头）
-	if (FilePathRootStr.Contains(TEXT(":/")) || FilePathRootStr.Contains(TEXT(":\\")) || FilePathRootStr.StartsWith(TEXT("/")))
+	// 对于 /Game/ 路径，直接推导标准 Pak 格式，不依赖 FilePathRoot
+	// FilePathRoot 可能是绝对路径或已包含项目名，直接使用会导致路径重复
+	if (RootStr == TEXT("/Game/"))
 	{
-		// 绝对路径：使用辅助函数转换为 Pak 挂载格式
-		FString EngineDir = FPaths::EngineDir();
-		FString ProjectDir = FPaths::ProjectDir();
-		FPaths::NormalizeDirectoryName(EngineDir);
-		FPaths::NormalizeDirectoryName(ProjectDir);
-
-		FilePathRootStr = ConvertAbsolutePathToPakMount(FilePathRootStr, EngineDir, ProjectDir);
-		if (FilePathRootStr.IsEmpty())
-		{
-			return TEXT("");
-		}
+		FilePathRootStr = FString::Printf(TEXT("../../../%s/Content/"), FApp::GetProjectName());
 	}
-	else if (!FilePathRootStr.StartsWith(TEXT("../../../")))
+	else if (RootStr == TEXT("/Engine/"))
 	{
-		// 非标准相对路径格式：根据 PackageNameRoot 推导标准 Pak 格式
-		if (RootStr == TEXT("/Game/"))
+		FilePathRootStr = TEXT("../../../Engine/Content/");
+	}
+	else
+	{
+		// 其他路径（插件等）：检查是否为绝对路径
+		if (FilePathRootStr.Contains(TEXT(":/")) || FilePathRootStr.Contains(TEXT(":\\")) || FilePathRootStr.StartsWith(TEXT("/")))
 		{
-			FilePathRootStr = FString::Printf(TEXT("../../../%s/Content/"), FApp::GetProjectName());
+			// 绝对路径：使用辅助函数转换为 Pak 挂载格式
+			FString EngineDir = FPaths::EngineDir();
+			FString ProjectDir = FPaths::ProjectDir();
+			FPaths::NormalizeDirectoryName(EngineDir);
+			FPaths::NormalizeDirectoryName(ProjectDir);
+
+			FilePathRootStr = ConvertAbsolutePathToPakMount(FilePathRootStr, EngineDir, ProjectDir);
+			if (FilePathRootStr.IsEmpty())
+			{
+				return TEXT("");
+			}
 		}
-		else if (RootStr == TEXT("/Engine/"))
+		else if (!FilePathRootStr.StartsWith(TEXT("../../../")))
 		{
-			FilePathRootStr = TEXT("../../../Engine/Content/");
+			// 非标准相对路径格式：无法处理
+			return TEXT("");
 		}
 	}
 

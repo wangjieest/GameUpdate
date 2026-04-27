@@ -21,16 +21,16 @@ public:
 
 	/** 异步构建更新包 */
 	void BuildPatchPackageAsync(const FHotUpdatePatchPackageConfig& Config);
-	
+
 	/** 取消构建 */
 	void CancelBuild();
 
 	/** 是否正在构建 */
 	bool IsBuilding() const { return bIsBuilding; }
-	
+
 	/** 验证配置 */
 	static bool ValidateConfig(const FHotUpdatePatchPackageConfig& Config, FString& OutErrorMessage);
-	
+
 	// 进度委托
 	FOnPackageProgressDelegate OnProgress;
 
@@ -38,16 +38,118 @@ public:
 	FOnPatchPackageCompleteDelegate OnComplete;
 
 private:
+	// === 静态辅助函数（复用） ===
+
+	/** 从 Manifest JSON 中提取版本号 */
+	static FString ExtractVersionFromManifest(const FString& ManifestPath);
+
+	/** 计算文件 Hash 映射（统一处理资产和非资产） */
+	static bool CalculateHashesForPaths(
+		const TArray<FString>& SourcePaths,
+		TMap<FString, FString>& OutHashes,
+		TMap<FString, int64>& OutSizes,
+		FString& OutErrorMessage,
+		const std::atomic<bool>& CancelFlag);
+
+	/** 解析单个容器 JSON 对象（复用） */
+	static bool ParseContainerFromJson(
+		const TSharedPtr<FJsonObject>& ContainerObj,
+		FHotUpdateContainerInfo& OutInfo,
+		const FString& DefaultVersion);
+
+	/** 将 Hash 映射按资产类型分离 */
+	static void SplitHashesByAssetType(
+		const TMap<FString, FString>& AllHashes,
+		const TMap<FString, int64>& AllSizes,
+		TMap<FString, FString>& OutAssetHashes,
+		TMap<FString, int64>& OutAssetSizes,
+		TMap<FString, FString>& OutNonAssetHashes,
+		TMap<FString, int64>& OutNonAssetSizes);
+
+	/** 合并资产和非资产差异报告 */
+	static FHotUpdateDiffReport MergeDiffReports(
+		const FHotUpdateDiffReport& AssetReport,
+		const FHotUpdateDiffReport& NonAssetReport,
+		const FString& BaseVersion,
+		const FString& TargetVersion);
+
+	/** 收集增量 Cook 资源列表 */
+	static TArray<FString> CollectAssetsToCook(
+		const FHotUpdateDiffReport& DiffReport,
+		const TMap<FString, FString>& BaseAssetHashes,
+		const TArray<FString>& AllAssetPaths);
+
+	// === 阶段子函数 ===
+
 	/** 收集资源 */
 	bool CollectAssets(FString& OutErrorMessage);
 
-	/** 加载基础版本 FileManifest */
+	/** 收集源文件路径（分为 UE 资产和非资产） */
+	bool CollectSourceFilePaths(
+		TArray<FString>& OutAssetSourcePaths,
+		TArray<FString>& OutNonAssetSourcePaths,
+		FString& OutErrorMessage);
+
+	/** 准备输出目录 */
+	FString PrepareOutputDirectory();
+
+	/** 创建 Patch IoStore 容器 */
+	bool CreatePatchContainer(
+		const TArray<FString>& ChangedAssetPaths,
+		const TArray<FString>& ChangedNonAssetPaths,
+		const FString& OutputDir,
+		FString& OutPatchUtocPath,
+		FString& OutPatchUcasPath,
+		int64& OutPatchSize,
+		FString& OutErrorMessage);
+
+	/** 加载基础版本容器信息（全量热更新） */
+	bool LoadBaseContainerInfos(
+		const FString& BaseContainerDir,
+		TArray<FHotUpdateContainerInfo>& OutContainers,
+		TMap<FString, FString>& OutFilesHash,
+		TMap<FString, int64>& OutFilesSize);
+
+	/** 从 Manifest 加载 Patch 容器引用 */
+	bool LoadPatchContainersFromManifest(
+		const FString& ManifestPath,
+		const FString& DefaultVersion,
+		TArray<FHotUpdateContainerInfo>& OutContainers);
+
+	/** 生成客户端 Manifest */
+	bool GenerateClientManifest(
+		const FString& ManifestPath,
+		const FString& PatchUtocPath,
+		const FString& PatchUcasPath,
+		const TArray<FHotUpdateContainerInfo>& BaseContainers,
+		int64 PatchSize,
+		TSharedPtr<FJsonObject>& OutVersionInfo,
+		TArray<TSharedPtr<FJsonValue>>& OutContainersArray);
+
+	/** 生成编辑器端 FileManifest */
+	bool GenerateFileManifest(
+		const FString& FileManifestPath,
+		const TSharedPtr<FJsonObject>& VersionInfo,
+		const TArray<TSharedPtr<FJsonValue>>& ContainersArray,
+		const FHotUpdateDiffReport& DiffReport,
+		const TMap<FString, FString>& BaseContainerFilesHash,
+		const TMap<FString, int64>& BaseContainerFilesSize);
+
+	/** 注册版本信息 */
+	void RegisterPatchVersion(
+		const FString& OutputDir,
+		const FString& PatchUtocPath,
+		const FHotUpdateDiffReport& DiffReport);
+
+	// === 重构的现有函数 ===
+
+	/** 加载基础版本 FileManifest（返回分类结果） */
 	static bool LoadBaseFileManifest(
 		const FString& ManifestPath,
-		TMap<FString, FString>& OutAssetHashes,
-		TMap<FString, int64>& OutAssetSizes);
+		FHotUpdateBaseManifestData& OutData,
+		FString& OutErrorMessage);
 
-	/** 计算差异 */
+	/** 计算差异（兼容版本，不含 Sizes） */
 	static bool ComputeDiff(
 		const TArray<FString>& CurrentAssets,
 		const TMap<FString, FString>& CurrentHashes,
@@ -55,8 +157,8 @@ private:
 		TArray<FString>& OutChangedAssets,
 		FHotUpdateDiffReport& OutReport);
 
-	/** 加载基础版本容器信息（全量热更新） */
-	static bool LoadBaseContainers(
+	/** 加载基础版本容器信息（静态版本，用于目录扫描） */
+	static bool LoadBaseContainersStatic(
 		const FString& ContainerDirectory,
 		TArray<FHotUpdateContainerInfo>& OutContainers,
 		TMap<FString, FString>& OutFilesHash,
@@ -67,10 +169,6 @@ private:
 		const FString& ManifestPath,
 		const FString& PatchUtocPath,
 		const FString& PatchUcasPath,
-		const TArray<FString>& ChangedAssetPaths,
-		const TMap<FString, FString>& ChangedAssetDiskPaths,
-		const TMap<FString, FString>& BaseAssetHashes,
-		const TMap<FString, int64>& BaseAssetSizes,
 		const FHotUpdateDiffReport& DiffReport,
 		const TArray<FHotUpdateContainerInfo>& BaseContainers = TArray<FHotUpdateContainerInfo>(),
 		const TMap<FString, FString>& BaseContainerFilesHash = TMap<FString, FString>(),
@@ -82,6 +180,9 @@ private:
 		const FString& CurrentFile,
 		int32 ProcessedFiles,
 		int32 TotalFiles);
+
+	/** 创建错误结果 */
+	static FHotUpdatePatchPackageResult MakeErrorResult(const FString& ErrorMessage);
 
 	/// 构建配置
 	FHotUpdatePatchPackageConfig CurrentConfig;

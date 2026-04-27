@@ -636,6 +636,38 @@ struct HOTUPDATEEDITOR_API FHotUpdateDiffReport
 };
 
 /**
+ * 基础版本 Manifest 数据（已按资产类型分类）
+ * 用于避免每次构建时筛选 .uasset/.umap
+ */
+struct HOTUPDATEEDITOR_API FHotUpdateBaseManifestData
+{
+	/// UE 资产 Hash 映射（仅 .uasset/.umap）
+	TMap<FString, FString> AssetHashes;
+
+	/// UE 资产大小映射
+	TMap<FString, int64> AssetSizes;
+
+	/// 非资产文件 Hash 映射
+	TMap<FString, FString> NonAssetHashes;
+
+	/// 非资产文件大小映射
+	TMap<FString, int64> NonAssetSizes;
+
+	FHotUpdateBaseManifestData()
+		: AssetHashes(), AssetSizes(), NonAssetHashes(), NonAssetSizes()
+	{}
+
+	/// 获取总资产数
+	int32 GetTotalAssetCount() const { return AssetHashes.Num(); }
+
+	/// 获取总非资产数
+	int32 GetTotalNonAssetCount() const { return NonAssetHashes.Num(); }
+
+	/// 是否有效
+	bool IsValid() const { return AssetHashes.Num() > 0 || NonAssetHashes.Num() > 0; }
+};
+
+/**
  * 更新包构建结果
  */
 USTRUCT(BlueprintType)

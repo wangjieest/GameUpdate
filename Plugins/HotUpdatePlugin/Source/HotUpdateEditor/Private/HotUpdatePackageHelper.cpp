@@ -375,7 +375,11 @@ FString FHotUpdatePackageHelper::GetCookedAssetPath(const FString& AssetPath, co
 	}
 
 	// 拼接完整 Cooked 路径
-	const FString CookedPath = FPaths::Combine(CookedBaseDir, FString(RelPath));
+	// 注意：RelPath 可能包含扩展名（当 AssetPath 是绝对路径时），需要去除
+	FString RelPathStr = FString(RelPath);
+	RelPathStr.RemoveFromEnd(TEXT(".uasset"));
+	RelPathStr.RemoveFromEnd(TEXT(".umap"));
+	const FString CookedPath = FPaths::Combine(CookedBaseDir, RelPathStr);
 
 	// 检查文件是否存在（优先 .umap，然后 .uasset）
 	FString UmapPath = CookedPath + TEXT(".umap");
